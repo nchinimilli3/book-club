@@ -93,3 +93,4 @@ This build incorporates the localhost review from Aug 23:
 - Club rows open a private club detail view.
 
 The interactions above are prototype/local state until Supabase is connected; the production persistence model remains defined by the included migration and RLS schema.
+# book-club
