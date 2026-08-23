@@ -1,0 +1,9 @@
+{
+  "name":"BOOK CLUB",
+  "short_name":"BOOK CLUB",
+  "start_url":"/",
+  "display":"standalone",
+  "background_color":"#f7f0e7",
+  "theme_color":"#f7f0e7",
+  "description":"A private home for reading together."
+}
