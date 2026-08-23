@@ -1,0 +1,11 @@
+export type Tone = 'rose'|'olive'|'gold'|'plum'|'blue'|'clay';
+export type Phase = 'setup'|'choosing'|'acquiring'|'reading'|'planning_meeting'|'meeting'|'rating'|'archived'|'paused';
+export type Profile = { id:string; displayName:string; username?:string; avatarUrl?:string };
+export type Book = { id:string; title:string; author:string; coverUrl?:string; description?:string; pages?:number; year?:number; isbn?:string };
+export type Club = { id:string; name:string; ownerId:string; tone:Tone; phase:Phase; inviteCode?:string; coverImageUrl?:string; memberCount:number };
+export type Member = Profile & { role:string; chapter?:number; status?:string };
+export type ClubBook = { id:string; clubId:string; book:Book; status:string; startDate?:string; targetFinishDate?:string; totalChapters?:number; totalPages?:number };
+export type Meeting = { id:string; startsAt:string; meetingType?:string; meetingUrl?:string; response?:string };
+export type Thought = { id:string; userId:string; body:string; type:string; chapter?:number; createdAt:string; author?:Profile; reactionCount?:number; replies?:number };
+export type Checkpoint = { id:string; dueAt:string; targetChapter?:number; targetPage?:number; label?:string };
+export type Workspace = { club:Club; members:Member[]; currentBook?:ClubBook; meeting?:Meeting; thoughts:Thought[]; checkpoints:Checkpoint[]; acquired:number; myProgress?:{chapter?:number; page?:number; percent?:number; status?:string; format?:string}; archiveBooks:Book[] };
