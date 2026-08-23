@@ -1,6 +1,15 @@
 import fs from 'node:fs';
-const must=['src/App.tsx','src/styles/global.css','supabase/migrations/001_initial.sql','worker/index.js','.env.example'];
-for(const f of must){if(!fs.existsSync(f)) throw new Error(`Missing ${f}`)}
-const sql=fs.readFileSync('supabase/migrations/001_initial.sql','utf8');
-for(const token of ['enable row level security','club_members','book_context_items','posts','votes']) if(!sql.includes(token)) throw new Error(`Schema missing ${token}`);
-console.log('BOOK CLUB smoke checks passed.');
+const must=['src/App.tsx','src/lib/AppContext.tsx','src/lib/data.ts','src/lib/api.ts','src/lib/telemetry.ts','src/pages/HomePage.tsx','src/pages/SearchPage.tsx','src/pages/ProfilePage.tsx','src/pages/ReadingRoom.tsx','src/pages/SettingsPage.tsx','src/pages/ArchivePage.tsx','src/pages/NotificationsPage.tsx','src/pages/JoinInvitePage.tsx','supabase/SCHEMA_CONTRACT.md','supabase/migrations/009_FINAL_RELEASE.sql','worker/index.js','public/sw.js','.env.example'];
+for(const f of must)if(!fs.existsSync(f))throw new Error(`Missing ${f}`);
+const allSrc=fs.readdirSync('src/pages').map(f=>`src/pages/${f}`).concat(fs.readdirSync('src/lib').map(f=>`src/lib/${f}`)).filter(f=>fs.statSync(f).isFile()).map(f=>fs.readFileSync(f,'utf8')).join('\n');
+for(const forbidden of ['demoClubs','Sunday Readers','Rebecca · Chapter 12','data/demo','Coming soon','Not wired'])if(allSrc.includes(forbidden))throw new Error(`Runtime source contains release blocker: ${forbidden}`);
+const app=fs.readFileSync('src/App.tsx','utf8');for(const token of ['/join/:code','/clubs/:clubId/books/:clubBookId','/clubs/:clubId/archive','/notifications','currentLabel'])if(!app.includes(token))throw new Error(`Routing missing ${token}`);
+const data=fs.readFileSync('src/lib/data.ts','utf8');for(const token of ['start_ballot_from_ideas','cast_ballot_vote','finalize_ballot','create_or_get_club_invite','cancel_club_meeting','get_locked_post_count','meeting_questions','is_favorite','post_type','spoiler_chapter'])if(!data.includes(token))throw new Error(`Data layer missing ${token}`);
+const home=fs.readFileSync('src/pages/HomePage.tsx','utf8');for(const token of ['getClubRecommendations','syncMeetingToCalendar','Get suggestions','Start the vote','Schedule meeting'])if(!home.includes(token))throw new Error(`Club lifecycle UI missing ${token}`);
+const search=fs.readFileSync('src/pages/SearchPage.tsx','utf8');for(const token of ['quickAdd','Add idea','Favorite','Would this work for your club?'])if(!search.includes(token))throw new Error(`Search flow missing ${token}`);
+const profile=fs.readFileSync('src/pages/ProfilePage.tsx','utf8');for(const token of ['Rate a book','updatePersonalBook','Favorites','Re-import CSV','finishStickerEditor'])if(!profile.includes(token))throw new Error(`Profile flow missing ${token}`);
+const room=fs.readFileSync('src/pages/ReadingRoom.tsx','utf8');for(const token of ['getReaderContext','createThought','lockedPostCount','Discuss at meeting','Quick reference','Meeting agenda','source-backed'])if(!room.includes(token))throw new Error(`Reading Room missing ${token}`);
+const settings=fs.readFileSync('src/pages/SettingsPage.tsx','utf8');for(const token of ['Google Calendar','beginCalendarConnect','disconnectCalendar','Export my data','Delete my account'])if(!settings.includes(token))throw new Error(`Settings missing ${token}`);
+const worker=fs.readFileSync('worker/index.js','utf8');for(const token of ['/api/recommendations','/api/calendar/start','/api/calendar/callback','/api/calendar/sync','calendar_connections','get_club_taste_profile','authorization'])if(!worker.includes(token))throw new Error(`Worker missing ${token}`);
+const sql=fs.readFileSync('supabase/migrations/009_FINAL_RELEASE.sql','utf8');for(const token of ['book_club_release_check','club_invites','calendar_connections','product_events','client_errors','get_club_taste_profile','get_locked_post_count','cancel_club_meeting'])if(!sql.includes(token))throw new Error(`Final migration missing ${token}`);
+console.log('BOOK CLUB production smoke checks passed.');

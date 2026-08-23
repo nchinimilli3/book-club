@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test:smoke": "node scripts/smoke.mjs"
+    "test:smoke": "node scripts/smoke.mjs",
+    "test:audit": "node scripts/release-audit.mjs && node scripts/audit-contract.mjs",
+    "test:release": "tsc -b --pretty false && node scripts/smoke.mjs && node scripts/release-audit.mjs && node scripts/audit-contract.mjs && node --check worker/index.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.56.0",

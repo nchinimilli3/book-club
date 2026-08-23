@@ -1,39 +1,90 @@
-# BOOK CLUB overhaul audit
+# BOOK CLUB — production release audit
 
-This branch treats Supabase as the source of truth. The previous demo-state routing has been removed from the primary experience.
+## Product contract
 
-## Connection rules
+All primary UI state resolves through real entities:
 
-- `/clubs/:clubId` always loads that exact club and persists it as the user's active club.
-- `/clubs/:clubId/books/:clubBookId` only opens the current Supabase club-book record. There is no Rebecca fallback.
-- Search saves into the current active club.
-- Progress writes through `update_my_progress`.
-- Copy check-in writes through `mark_book_acquired`.
-- Finish date writes through `start_club_book` and generates checkpoints.
-- Discussion posts write to `posts` and are filtered by spoiler chapter.
-- Meeting RSVP writes to `meeting_rsvps`.
-- Open ballots and the user's own votes load from Supabase.
-- Profile statistics/shelves load from `personal_books`; Goodreads CSV import writes to that table.
-- Reader's Companion text loads from `book_context_items` and `context_sources`.
-- Reader's Companion visual research uses Wikimedia Commons dynamically.
-- Posts, progress and RSVP tables subscribe through Supabase Realtime.
+`auth user → active club → club book / ballot / meeting → user progress and actions`
 
-## Visual system changes
+The runtime contains no demo-club, Rebecca or Sunday Readers fallback. Direct club/book routes first select the route's actual club before rendering its data.
 
-- Removed decorative pseudo-brand icons/confetti/doodle language from core product UI.
-- Removed repeated eyebrow-label/card pattern from primary screens.
-- One dominant composition per page: current book, club index, profile shelf, or reading-room world.
-- Color is used as planes/material rather than random pastel containers.
-- Strong serif display + restrained sans UI system.
-- Consistent border/radius/touch-target system.
-- Mobile and desktop compositions are intentionally different.
-- Shelves are dimensional objects, not colored divider lines.
-- Context becomes a book-specific archival collage rather than a dashboard grid.
+## Complete product surfaces in this release
 
-## Still provider-dependent
+### Account + private clubs
+- signup/sign-in/session/logout/password recovery
+- profile basics/settings/export/delete-account flow
+- private club create/join/switch
+- revocable/expiring invites
+- ownership-aware account deletion
+- persisted active club
 
-The Reader's Companion will intentionally show an honest empty state until context rows are generated for the selected book. It does not fabricate character or historical material. AI synthesis, Google Calendar OAuth, and server-side enrichment jobs still require their production provider credentials/configuration.
+### Choosing
+- live catalog search
+- quick Add idea without losing search state
+- book decision guide
+- Suggested by attribution
+- club taste recommendations endpoint
+- owner/admin hidden ballot creation
+- one changeable member vote
+- explicit tie/no-vote handling
+- unique winner promotion to acquisition
 
-## Verification
+### Reading
+- acquisition format check-in
+- finish date + generated checkpoints
+- progress persistence and spoiler boundary
+- locked-post count
+- posts, replies and reactions
+- sealed predictions
+- private notes and quotes
+- save/remove meeting agenda item
+- source-backed Reader Context with clean no-data states
 
-`tsc -b` passes on this source tree. Full Vite bundling could not be rerun in the build container because the uploaded `node_modules` contains platform-specific optional Rollup binaries; Cloudflare will perform a clean Linux dependency install during deployment.
+### Meetings
+- schedule/update/cancel meeting
+- RSVP + readiness
+- agenda from saved discussion items
+- one-time calendar link fallback
+- Google Calendar OAuth connect/status/disconnect
+- Google event create/update/remove sync through Worker
+
+### Profile + archive
+- personal library via Search
+- Goodreads CSV import/re-import
+- Favorites independent of rating
+- ratings and shelf editing
+- acrylic shelf presentation
+- reading-year summary
+- persistent profile styling/stickers
+- finished-book archive and annual volume summary
+
+### Production behavior
+- realtime subscriptions for social/meeting/reading surfaces
+- notifications inbox + unread count/deep links
+- first-party product funnel telemetry
+- client error logging
+- graceful AI/provider failure paths
+- release database validator
+- static route/button/RPC/sticker-asset audit
+
+## Security
+
+Club/social tables use RLS. `anon` private CRUD grants are explicitly revoked. The browser uses only the publishable Supabase key. Google tokens and the Supabase service role are Worker-only; Google token payloads are encrypted before storage.
+
+The required live privacy test uses three accounts: A+B share Club 1, B+C share Club 2, and A must be unable to read Club 2 through UI, direct route, REST/RPC or realtime.
+
+## Provider activation
+
+The implementation is present, but production credentials are external deployment requirements:
+
+- Google OAuth credentials + exact callback URL activate two-way Calendar event sync.
+- OpenAI Worker secret activates AI decision/context/recommendation synthesis.
+- Custom SMTP is recommended before broad invitation-email usage.
+
+The app must remain usable when these providers are unavailable.
+
+## Automated validation
+
+`npm run test:release` currently validates TypeScript, product smoke checks, source-level button/route/RPC/asset invariants, schema-contract coverage and Worker JavaScript syntax.
+
+The final production sign-off is the SQL `PASS` report plus the live multi-account lifecycle test; neither is faked by local/demo state.

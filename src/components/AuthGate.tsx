@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
-type Mode = 'welcome' | 'signup' | 'signin' | 'check-email';
+type Mode = 'welcome' | 'signup' | 'signin' | 'forgot' | 'reset-password' | 'check-email';
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -15,6 +15,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
     if (!supabase) return;
@@ -22,8 +23,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       setSession(data.session);
       setChecking(false);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
+      if (event === 'PASSWORD_RECOVERY') { setMode('reset-password'); setError(''); setMessage(''); }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -37,7 +39,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  if (session) return children;
+  if (session && mode !== 'reset-password') return children;
 
   async function createAccount(event: FormEvent) {
     event.preventDefault();
@@ -52,7 +54,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       email: email.trim(),
       password,
       options: {
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
         data: { display_name: displayName.trim() },
       },
     });
@@ -77,9 +79,34 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     if (signInError) setError(signInError.message);
   }
 
+  async function sendResetLink(event: FormEvent) {
+    event.preventDefault();
+    if (!supabase) return;
+    setError(''); setMessage('');
+    if (!email.trim()) return setError('Enter your email.');
+    setLoading(true);
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+    setLoading(false);
+    if (resetError) return setError(resetError.message);
+    setMessage('Check your inbox for the password reset link.');
+  }
+
+  async function updateRecoveredPassword(event: FormEvent) {
+    event.preventDefault();
+    if (!supabase) return;
+    setError(''); setMessage('');
+    if (password.length < 6) return setError('Use at least 6 characters for your password.');
+    setLoading(true);
+    const { error: updateError } = await supabase.auth.updateUser({ password });
+    setLoading(false);
+    if (updateError) return setError(updateError.message);
+    setPassword(''); setMessage('Password updated.'); setMode('welcome');
+  }
+
   const resetToWelcome = () => {
     setMode('welcome');
     setError('');
+    setMessage('');
     setPassword('');
   };
 
@@ -153,7 +180,36 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
             {error && <p className="auth-error">{error}</p>}
             <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'}</button>
-            <button type="button" className="auth-inline-link" onClick={() => { setMode('signup'); setError(''); }}>New here? Create an account</button>
+            <button type="button" className="auth-inline-link" onClick={() => { setMode('forgot'); setError(''); setMessage(''); }}>Forgot password?</button>
+            <button type="button" className="auth-inline-link" onClick={() => { setMode('signup'); setError(''); setMessage(''); }}>New here? Create an account</button>
+          </form>
+        )}
+
+        {mode === 'forgot' && (
+          <form className="auth-form" onSubmit={sendResetLink}>
+            <button type="button" className="auth-back" onClick={() => { setMode('signin'); setError(''); setMessage(''); }}><ArrowLeft size={18} /> Sign in</button>
+            <p className="auth-kicker">Password reset</p>
+            <h1>Check your inbox next.</h1>
+            <label htmlFor="reset-email">Email</label>
+            <input id="reset-email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
+            {error && <p className="auth-error">{error}</p>}
+            {message && <p className="auth-success">{message}</p>}
+            <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Sending…' : 'Send reset link'}</button>
+          </form>
+        )}
+
+        {mode === 'reset-password' && (
+          <form className="auth-form" onSubmit={updateRecoveredPassword}>
+            <p className="auth-kicker">New password</p>
+            <h1>Choose a new password.</h1>
+            <label htmlFor="new-password">Password</label>
+            <div className="password-field">
+              <input id="new-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="6+ characters" />
+              <button type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button>
+            </div>
+            {error && <p className="auth-error">{error}</p>}
+            {message && <p className="auth-success">{message}</p>}
+            <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Saving…' : 'Save new password'}</button>
           </form>
         )}
 
