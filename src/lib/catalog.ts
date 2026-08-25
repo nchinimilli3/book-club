@@ -24,5 +24,5 @@ export function searchResultToCatalog(book:BookSearchResult):CatalogBook{
 }
 
 export function catalogToSearchResult(book:CatalogBook):BookSearchResult{
-  return {key:book.key,source:'google',title:book.title,author:book.author,cover:book.cover,year:book.year,isbn:book.isbn,subjects:book.subjects};
+  return {key:book.key,source:'google',title:book.title,author:book.author,cover:book.cover ?? '',year:book.year,isbn:book.isbn,subjects:book.subjects};
 }

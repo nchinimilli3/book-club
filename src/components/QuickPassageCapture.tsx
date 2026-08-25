@@ -33,7 +33,7 @@ export function QuickPassageCapture(){
   function reset(){setResult(null);setError('');setBusy(false);setSaving(false);setSaved(false)}
   function close(){setOpen(false);setTimeout(reset,180)}
   async function saveExtracted(next:PassageTranscription){
-    if(!next.text.trim()||!a.user)return;setSaving(true);setError('');
+    if(!next.text.trim()||!a.user||!cb)return;setSaving(true);setError('');
     try{
       const chapter=next.chapterNumber||currentChapter;
       await createThought(cb.id,a.user.id,next.text.trim(),chapter,'thought');
