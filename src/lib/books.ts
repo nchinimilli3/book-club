@@ -23,10 +23,35 @@ const cleanSubjects=(subjects:any[]) => (subjects||[])
   .filter((s,i,a)=>a.findIndex(x=>x.toLowerCase()===s.toLowerCase())===i)
   .slice(0,18);
 
+const normalize=(value:string)=>value.toLowerCase().normalize('NFKD').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+const workKey=(b:Pick<BookSearchResult,'title'|'author'>)=>`${normalize(b.title)}::${normalize(b.author)}`;
+function rankBook(book:BookSearchResult,query:string){
+  const q=normalize(query),title=normalize(book.title),author=normalize(book.author);
+  let score=0;
+  if(title===q)score+=120;
+  else if(title.startsWith(q))score+=80;
+  else if(title.includes(q))score+=55;
+  if(author===q)score+=65;
+  else if(author.includes(q))score+=30;
+  if(book.cover)score+=14;
+  if(book.isbn)score+=7;
+  if(book.pages)score+=4;
+  score+=Math.min(18,Math.log2(Math.max(1,book.editionCount||1))*3);
+  return score;
+}
+function canonicalize(items:BookSearchResult[],query:string){
+  const byWork=new Map<string,BookSearchResult>();
+  for(const item of items){
+    const key=workKey(item),existing=byWork.get(key);
+    if(!existing||rankBook(item,query)>rankBook(existing,query))byWork.set(key,item);
+  }
+  return [...byWork.values()].sort((a,b)=>rankBook(b,query)-rankBook(a,query)).slice(0,18);
+}
+
 export async function searchBooks(query:string): Promise<BookSearchResult[]> {
   const q = query.trim();
   if (!q) return [];
-  const openUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=18&fields=key,title,author_name,cover_i,first_publish_year,isbn,number_of_pages_median,edition_count,subject`;
+  const openUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=36&fields=key,title,author_name,cover_i,first_publish_year,isbn,number_of_pages_median,edition_count,subject,language`;
   try {
     const res = await fetch(openUrl);
     if (!res.ok) throw new Error('Open Library unavailable');
@@ -42,15 +67,17 @@ export async function searchBooks(query:string): Promise<BookSearchResult[]> {
       pages:d.number_of_pages_median,
       editionCount:d.edition_count,
       subjects:cleanSubjects(d.subject),
-    })).filter((b:BookSearchResult) => b.cover);
-    if (primary.length) return primary;
+      _languages:d.language||[],
+    })).filter((b:any)=>!b._languages?.length||b._languages.includes('eng'))
+      .map(({_languages,...b}:any)=>b as BookSearchResult);
+    if (primary.length) return canonicalize(primary,q);
   } catch {}
 
-  const googleUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=18`;
+  const googleUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=30`;
   const res = await fetch(googleUrl);
   if (!res.ok) return [];
   const data = await res.json();
-  return (data.items ?? []).map((item:any) => {
+  const fallback=(data.items ?? []).map((item:any) => {
     const v = item.volumeInfo ?? {};
     return {
       key:item.id,
@@ -62,8 +89,9 @@ export async function searchBooks(query:string): Promise<BookSearchResult[]> {
       isbn:v.industryIdentifiers?.find((x:any)=>x.type==='ISBN_13')?.identifier || v.industryIdentifiers?.[0]?.identifier,
       pages:v.pageCount,
       subjects:cleanSubjects(v.categories),
-    };
-  }).filter((b:BookSearchResult) => b.cover);
+    } as BookSearchResult;
+  });
+  return canonicalize(fallback,q);
 }
 
 function descriptionText(v:any){
@@ -95,6 +123,29 @@ export async function getBookDecisionDetails(book:BookSearchResult):Promise<Book
   return {...book,subjects:book.subjects||[]};
 }
 
+export async function getKnownChapterCount(book:{title:string;author:string;isbn?:string}):Promise<number|undefined>{
+  try{
+    const q=book.isbn?`isbn:${book.isbn}`:`title:${book.title} author:${book.author}`;
+    const search=await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=3&fields=key`);
+    if(!search.ok)return undefined;
+    const data=await search.json();
+    const key=data.docs?.find((d:any)=>String(d.key||'').startsWith('/works/'))?.key;
+    if(!key)return undefined;
+    const work=await fetch(`https://openlibrary.org${key}.json`);
+    if(!work.ok)return undefined;
+    const json=await work.json();
+    const toc=Array.isArray(json.table_of_contents)?json.table_of_contents:[];
+    if(toc.length<2)return undefined;
+    const chapterish=toc.filter((entry:any)=>{
+      const label=String(entry?.title||entry?.label||'').trim();
+      if(!label)return false;
+      return !/^(contents|acknowledg|copyright|bibliograph|index|notes|about the author)$/i.test(label);
+    });
+    const count=chapterish.length||toc.length;
+    return count>=2&&count<=180?count:undefined;
+  }catch{return undefined}
+}
+
 const topicRules:[RegExp,string][]=[
   [/mystery|thriller|crime|murder|detective/i,'mystery & motive'],
   [/family|marriage|relationship|friendship|love/i,'relationships'],
@@ -122,7 +173,7 @@ export function buildLocalDecisionGuide(book:BookDecisionDetails){
       : `A bigger month: around ${hours} hours total. Better if everyone is up for roughly ${weekly} pages a week.`
     : 'Page count varies by edition, so check the copy everyone is likely to use before setting the month.';
   const shape=/essay/i.test(text)?'essay collection':/memoir|biograph/i.test(text)?'memoir / nonfiction':/short stories/i.test(text)?'short-story collection':/poetry/i.test(text)?'poetry':/fiction|novel/i.test(text)?'novel':'book';
-  const discussion=topics.length?`The strongest discussion lanes look like ${topics.join(', ')}.`:'There is enough thematic range here to support a conversation, but the catalog metadata is limited.';
+  const discussion=topics.length?`Likely discussion topics: ${topics.join(', ')}.`:'The catalog does not expose enough subject data to predict discussion themes reliably.';
   const fit=/mystery|thriller|crime/i.test(text)?'Good if your group likes theories, motives, and comparing what everyone noticed.'
     :/essay/i.test(text)?'Good if your group wants a flexible month: people can discuss individual pieces even if they read at slightly different speeds.'
     :/memoir|biograph/i.test(text)?'Good if your group likes talking about choices, perspective, memory, and how a life gets narrated.'

@@ -2,8 +2,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { AuthGate } from './components/AuthGate';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { installGlobalErrorReporting } from './lib/telemetry';
-import './styles/global.css';
+import './styles/system.css';
 
 installGlobalErrorReporting();
 if(import.meta.env.PROD && 'serviceWorker' in navigator){
@@ -11,5 +12,5 @@ if(import.meta.env.PROD && 'serviceWorker' in navigator){
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><AuthGate><App/></AuthGate></React.StrictMode>
+  <React.StrictMode><AppErrorBoundary><AuthGate><App/></AuthGate></AppErrorBoundary></React.StrictMode>
 );

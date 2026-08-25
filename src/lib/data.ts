@@ -1,9 +1,42 @@
 import { supabase } from './supabase';
 import { trackEvent } from './telemetry';
-import type { Book, Club, ClubBook, Member, Profile, Thought, Workspace, Tone, Phase, ProfileStyle, Reply, Reaction, MarginItem, ClubRating, AppNotification, MeetingQuestion } from './model';
+import type { Book, Club, ClubBook, Member, Profile, Thought, Workspace, Tone, Phase, ProfileStyle, MarginItem, ClubRating, AppNotification, MeetingQuestion, ProgressScene } from './model';
 
 const toneMap: Record<string, Tone> = { pink:'rose', petal:'rose', rose:'rose', olive:'olive', butter:'gold', gold:'gold', lavender:'plum', plum:'plum', sky:'blue', blue:'blue', wine:'clay', clay:'clay' };
 const phaseMap = (v?: string): Phase => (['setup','choosing','acquiring','reading','planning_meeting','meeting','rating','archived','paused'].includes(v || '') ? v : 'setup') as Phase;
+function stableSceneHash(seed:string){
+  // FNV-1a gives us much better spread across UUIDs than parity of a simple 31x hash.
+  let hash=0x811c9dc5;
+  for(let i=0;i<seed.length;i++){
+    hash^=seed.charCodeAt(i);
+    hash=Math.imul(hash,0x01000193)>>>0;
+  }
+  return hash>>>0;
+}
+function hasExplicitProgressScene(row:any){
+  const explicit=String(row?.progress_scene||row?.progressScene||'').toLowerCase();
+  return explicit==='race'||explicit==='sailing';
+}
+function resolveProgressScene(row:any):ProgressScene{
+  const explicit=String(row?.progress_scene||row?.progressScene||'').toLowerCase();
+  if(explicit==='race'||explicit==='sailing')return explicit as ProgressScene;
+  const seed=String(row?.id||row?.name||'book-club');
+  return stableSceneHash(seed)%2===0?'race':'sailing';
+}
+function balanceDevProgressScenes(rows:any[],clubs:Club[]){
+  // Production should persist clubs.progress_scene (migration 011). In local/dev,
+  // keep a useful visual mix even before that migration has been applied.
+  if(!import.meta.env.DEV||clubs.length<2)return clubs;
+  const fallbackIndexes=rows.map((row,index)=>hasExplicitProgressScene(row?.clubs)?-1:index).filter(index=>index>=0);
+  if(fallbackIndexes.length<2)return clubs;
+  const scenes=fallbackIndexes.map(index=>clubs[index]?.progressScene);
+  if(new Set(scenes).size>1)return clubs;
+  const sorted=[...fallbackIndexes].sort((a,b)=>String(clubs[a]?.id||'').localeCompare(String(clubs[b]?.id||'')));
+  const start=stableSceneHash(sorted.map(index=>clubs[index]?.id||'').join('|'))%2;
+  const assigned=new Map<number,ProgressScene>();
+  sorted.forEach((clubIndex,position)=>assigned.set(clubIndex,(position+start)%2===0?'race':'sailing'));
+  return clubs.map((club,index)=>assigned.has(index)?{...club,progressScene:assigned.get(index)!}:club);
+}
 const bookFrom = (b: any): Book => ({
   id: b.id,
   title: b.title,
@@ -15,8 +48,36 @@ const bookFrom = (b: any): Book => ({
   isbn: b.isbn13 || undefined,
 });
 
+function isBackendImplementationError(error:any){
+  const text=`${error?.message||''} ${error?.details||''} ${error?.hint||''}`.toLowerCase();
+  return text.includes('schema cache')||text.includes('could not find the function')||text.includes('could not find a relationship')||text.includes('does not exist')||text.includes('pgrst');
+}
+
 function fail(error: any, fallback: string): never {
-  throw new Error(error?.message || fallback);
+  throw new Error(isBackendImplementationError(error)?fallback:(error?.message || fallback));
+}
+
+function isMeetingSchemaMissing(error: any): boolean {
+  const code = String(error?.code || '');
+  const text = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+  return (code === 'PGRST205' || code === 'PGRST202' || code === '42P01' || code === '42883')
+    && (text.includes('meeting_options') || text.includes('meeting_option_responses') || text.includes('save_meeting_options') || text.includes('set_meeting_option_response'));
+}
+
+
+function isBallotPreferenceSchemaMissing(error: any): boolean {
+  const code = String(error?.code || '');
+  const text = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
+  const mentionsPreferenceSchema = text.includes('ballot_preferences') || text.includes('set_ballot_preference');
+  const missingSchemaSignal = code === 'PGRST205' || code === 'PGRST202' || code === '42P01' || code === '42883'
+    || text.includes('schema cache') || text.includes('could not find the table') || text.includes('does not exist');
+  return mentionsPreferenceSchema && missingSchemaSignal;
+}
+function failMeetingSchema(error: any, fallback: string): never {
+  if (isMeetingSchemaMissing(error)) {
+    throw new Error('Meeting scheduling needs the latest database migration. Run supabase/migrations/009_FINAL_RELEASE.sql in the Supabase SQL Editor, confirm every release check says PASS, then refresh the app.');
+  }
+  fail(error, fallback);
 }
 
 export async function getProfile(userId: string): Promise<Profile> {
@@ -36,7 +97,8 @@ export async function getMyClubs(userId: string) {
   if (clubResult.error) fail(clubResult.error, 'Could not load clubs');
   // Existing users from before user_preferences was added may legitimately have no row.
   if (prefResult.error && prefResult.error.code !== 'PGRST116') fail(prefResult.error, 'Could not load active club preference');
-  const clubs = (clubResult.data || []).filter((x: any) => x.clubs).map((r: any) => ({
+  const membershipRows=(clubResult.data || []).filter((x: any) => x.clubs);
+  const clubs = balanceDevProgressScenes(membershipRows,membershipRows.map((r: any) => ({
     id: r.clubs.id,
     name: r.clubs.name,
     ownerId: r.clubs.owner_id,
@@ -45,7 +107,8 @@ export async function getMyClubs(userId: string) {
     inviteCode: r.clubs.invite_code,
     coverImageUrl: r.clubs.cover_image_url,
     memberCount: 0,
-  }));
+    progressScene: resolveProgressScene(r.clubs),
+  })));
   return { clubs, activeClubId: prefResult.data?.active_club_id || clubs[0]?.id };
 }
 
@@ -78,18 +141,27 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
   if (clubResult.error) fail(clubResult.error, 'Could not load club');
   const c: any = clubResult.data;
 
-  const [memberResult, clubBookResult, meetingResult] = await Promise.all([
+  const [memberResult, clubBookResult, meetingResult, meetingOptionResult] = await Promise.all([
     supabase.from('club_members').select('role,user_id').eq('club_id', clubId),
     supabase.from('club_books').select('*,books(*)').eq('club_id', clubId).order('created_at', { ascending: false }),
     supabase.from('meetings').select('*,meeting_rsvps(response,user_id)').eq('club_id', clubId).neq('status','cancelled').order('starts_at', { ascending: true }),
+    supabase.from('meeting_options').select('id,starts_at,meeting_option_responses(user_id,available)').eq('club_id',clubId).order('starts_at'),
   ]);
   if (memberResult.error) fail(memberResult.error, 'Could not load club members');
   if (clubBookResult.error) fail(clubBookResult.error, 'Could not load club books');
   if (meetingResult.error) fail(meetingResult.error, 'Could not load meetings');
+  // Meeting polls were added in release migration 009. An older live database should
+  // not make the entire club unreadable while that migration is being applied.
+  if (meetingOptionResult.error && !isMeetingSchemaMissing(meetingOptionResult.error)) fail(meetingOptionResult.error, 'Could not load meeting availability');
 
   const memberRows: any[] = memberResult.data || [];
   const clubBooks: any[] = clubBookResult.data || [];
   const meetings: any[] = meetingResult.data || [];
+  const meetingOptions = (meetingOptionResult.error ? [] : meetingOptionResult.data || []).map((x:any)=>({
+    id:x.id, startsAt:x.starts_at,
+    availableCount:(x.meeting_option_responses||[]).filter((r:any)=>r.available).length,
+    myAvailable:(x.meeting_option_responses||[]).some((r:any)=>r.user_id===userId&&r.available),
+  }));
   const memberIds = memberRows.map((m:any)=>m.user_id).filter(Boolean);
   const profileResult = memberIds.length ? await supabase.from('profiles').select('id,display_name,username,avatar_url').in('id', memberIds) : {data:[],error:null} as any;
   if (profileResult.error) fail(profileResult.error, 'Could not load member profiles');
@@ -152,6 +224,7 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
       type: p.post_type ?? p.type ?? 'thought',
       chapter: p.spoiler_chapter ?? p.chapter ?? undefined,
       createdAt: p.created_at,
+      predictionRevealed: Boolean(p.revealed_at) || !Boolean(p.locked),
       author: profileMap.get(p.user_id) ? { id: p.user_id, displayName: (profileMap.get(p.user_id) as any).display_name || 'Reader', username: (profileMap.get(p.user_id) as any).username || undefined, avatarUrl: (profileMap.get(p.user_id) as any).avatar_url || undefined } : undefined,
       reactions: reactionRows.filter((r:any)=>r.post_id===p.id).map((r:any)=>({ id:r.id,postId:r.post_id,userId:r.user_id,reaction:r.reaction,createdAt:r.created_at })),
       replyItems: replyRows.filter((r:any)=>r.post_id===p.id).map((r:any)=>{const rp:any=profileMap.get(r.user_id);return { id:r.id,postId:r.post_id,userId:r.user_id,body:r.body,createdAt:r.created_at,author:rp?{id:r.user_id,displayName:rp.display_name||'Reader',username:rp.username||undefined,avatarUrl:rp.avatar_url||undefined}:undefined };}),
@@ -163,7 +236,7 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
     acquired = (checkinResult.data || []).filter((x: any) => x.status === 'acquired').length;
   }
 
-  const members: Member[] = memberRows.map((m: any) => { const p:any=profileMap.get(m.user_id); const rp:any=memberProgressRows.find(x=>x.user_id===m.user_id); return { id: m.user_id, displayName: p?.display_name || 'Reader', username: p?.username || undefined, avatarUrl: p?.avatar_url || undefined, role: m.role, chapter:rp?.chapter||undefined, status:(rp?.status??rp?.participation_status)||undefined }; });
+  const members: Member[] = memberRows.map((m: any) => { const p:any=profileMap.get(m.user_id); const rp:any=memberProgressRows.find(x=>x.user_id===m.user_id); return { id: m.user_id, displayName: p?.display_name || 'Reader', username: p?.username || undefined, avatarUrl: p?.avatar_url || undefined, role: m.role, chapter:rp?.chapter||undefined, page:rp?.page||undefined, percent:rp?.percent!=null?Number(rp.percent):undefined, status:(rp?.status??rp?.participation_status)||undefined, format:rp?.format||undefined }; });
   const currentBook: ClubBook | undefined = active ? {
     id: active.id,
     clubId,
@@ -186,14 +259,14 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
   });
 
   return {
-    club: { id: c.id, name: c.name, ownerId: c.owner_id, tone: toneMap[c.accent_palette || c.palette] || 'rose', phase: phaseMap(c.status), inviteCode: c.invite_code, coverImageUrl: c.cover_image_url, memberCount: members.length },
-    members, currentBook, ideaBooks, meeting, thoughts: thoughts.map(t=>({...t,savedForMeeting:meetingQuestions.some(q=>q.postId===t.id)})), checkpoints, acquired, myProgress: progress, archiveBooks, myClubRating, lockedPostCount, meetingQuestions,
+    club: { id: c.id, name: c.name, ownerId: c.owner_id, tone: toneMap[c.accent_palette || c.palette] || 'rose', phase: phaseMap(c.status), inviteCode: c.invite_code, coverImageUrl: c.cover_image_url, memberCount: members.length, progressScene: resolveProgressScene(c) },
+    members, currentBook, ideaBooks, meeting, meetingOptions, thoughts: thoughts.map(t=>({...t,savedForMeeting:meetingQuestions.some(q=>q.postId===t.id)})), checkpoints, acquired, myProgress: progress, archiveBooks, myClubRating, lockedPostCount, meetingQuestions,
   };
 }
 
-export async function updateProgress(id: string, chapter?: number, status = 'reading', totalChapters?: number, page?: number, totalPages?: number) {
+export async function updateProgress(id: string, chapter?: number, status = 'reading', totalChapters?: number, page?: number, totalPages?: number, explicitPercent?:number) {
   if (!supabase) return;
-  const percent = totalChapters && chapter != null ? Math.min(100, Math.max(0, Math.round(chapter / totalChapters * 100))) : totalPages && page != null ? Math.min(100, Math.max(0, Math.round(page / totalPages * 100))) : null;
+  const percent = explicitPercent != null ? Math.min(100,Math.max(0,Math.round(explicitPercent))) : totalChapters && chapter != null ? Math.min(100, Math.max(0, Math.round(chapter / totalChapters * 100))) : totalPages && page != null ? Math.min(100, Math.max(0, Math.round(page / totalPages * 100))) : null;
   const { error } = await supabase.rpc('update_my_progress', { target_club_book_id: id, chapter_number: chapter ?? null, page_number: page ?? null, progress_percent: percent, reading_status: status });
   if (error) fail(error, 'Could not save progress');
   void trackEvent('reading_progress_updated',{clubBookId:id,status,chapter,page,percent});
@@ -230,6 +303,20 @@ export async function scheduleMeeting(clubId: string, clubBookId: string | undef
   if(error) fail(error,'Could not save meeting');
   void trackEvent('meeting_scheduled',{clubId,clubBookId,meetingId:data||meetingId});
   return data;
+}
+
+export async function saveMeetingOptions(clubId:string,clubBookId:string|undefined,startsAt:string[]){
+  if(!supabase)throw new Error('Supabase unavailable');
+  const {error}=await supabase.rpc('save_meeting_options',{target_club_id:clubId,target_club_book_id:clubBookId||null,target_options:startsAt});
+  if(error)failMeetingSchema(error,'Could not save meeting options');
+  void trackEvent('meeting_options_saved',{clubId,count:startsAt.length});
+}
+
+export async function setMeetingOptionResponse(optionId:string,available:boolean){
+  if(!supabase)throw new Error('Supabase unavailable');
+  const {error}=await supabase.rpc('set_meeting_option_response',{target_option_id:optionId,target_available:available});
+  if(error)failMeetingSchema(error,'Could not save your availability');
+  void trackEvent('meeting_availability_saved',{optionId,available});
 }
 
 export async function createThought(bookId: string, userId: string, body: string, chapter?: number, type = 'thought') {
@@ -277,21 +364,24 @@ export async function saveBookToClub(clubId: string, r: { title:string; author:s
   return { bookId, clubBookId: result.data.id, alreadySaved: false, status: 'idea' };
 }
 
-export async function savePersonalBook(userId: string, r: { title:string; author:string; cover?:string; year?:number; isbn?:string; pages?:number; description?:string }, { shelf='want_to_read', rating, dateFinished, isFavorite=false, source='search' }: { shelf?:string; rating?:number; dateFinished?:string; isFavorite?:boolean; source?:'search'|'goodreads' } = {}) {
+export async function savePersonalBook(userId: string, r: { title:string; author:string; cover?:string; year?:number; isbn?:string; pages?:number; description?:string }, { shelf='want_to_read', rating, dateFinished, isFavorite=false, source='search' }: { shelf?:string; rating?:number; dateFinished?:string|null; isFavorite?:boolean; source?:'search'|'goodreads' } = {}) {
   if (!supabase) throw new Error('Supabase unavailable');
   const bookId = await ensureBook(r);
-  const payload: any = { user_id: userId, book_id: bookId, shelf, rating: rating || null, date_finished: dateFinished || null, source, is_favorite: isFavorite, updated_at: new Date().toISOString() };
+  const inferredFinished = dateFinished !== undefined ? dateFinished : (shelf==='read' && source!=='goodreads' ? new Date().toISOString().slice(0,10) : null);
+  const payload: any = { user_id: userId, book_id: bookId, shelf, rating: rating ?? null, date_finished: inferredFinished, source, is_favorite: isFavorite, updated_at: new Date().toISOString() };
   const result = await supabase.from('personal_books').upsert(payload, { onConflict: 'user_id,book_id' });
   if (result.error) fail(result.error, 'Could not save personal book');
   void trackEvent('personal_book_saved',{bookId,shelf,isFavorite,source});
   return bookId;
 }
 
-export async function updatePersonalBook(userId: string, personalBookId: string, patch: { shelf?:string; rating?:number|null; dateFinished?:string|null; isFavorite?:boolean }) {
+export async function updatePersonalBook(userId: string, personalBookId: string, patch: { shelf?:string; rating?:number|null; dateFinished?:string|null; isFavorite?:boolean; isPublic?:boolean }) {
   if (!supabase) throw new Error('Supabase unavailable');
   const payload: any = { ...patch, updated_at: new Date().toISOString() };
+  if (patch.shelf==='read' && !('dateFinished' in patch)) payload.date_finished = new Date().toISOString().slice(0,10);
   if ('dateFinished' in payload) { payload.date_finished = payload.dateFinished; delete payload.dateFinished; }
   if ('isFavorite' in payload) { payload.is_favorite = payload.isFavorite; delete payload.isFavorite; }
+  if ('isPublic' in payload) { payload.is_public = payload.isPublic; delete payload.isPublic; }
   const result = await supabase.from('personal_books').update(payload).eq('id', personalBookId).eq('user_id', userId);
   if (result.error) fail(result.error, 'Could not update book');
 }
@@ -308,7 +398,7 @@ export async function getBookContext(bookId: string, chapter?: number) {
   let q = supabase.from('book_context_items').select('*,context_sources(*)').eq('book_id', bookId).order('created_at');
   if (chapter != null) q = q.or(`spoiler_chapter.is.null,spoiler_chapter.lte.${chapter}`);
   const { data, error } = await q;
-  if (error) fail(error, 'Could not load Reader’s Companion');
+  if (error) fail(error, 'Could not load book context');
   return (data || []).map((x: any) => ({ ...x, kind: x.kind ?? x.type ?? 'context' }));
 }
 
@@ -316,7 +406,7 @@ export async function getPersonalLibrary(userId: string) {
   if (!supabase) return [];
   const result = await supabase.from('personal_books').select('*,books(*)').eq('user_id', userId).order('date_finished', { ascending: false, nullsFirst: false });
   if (result.error) fail(result.error, 'Could not load personal library');
-  return (result.data || []).map((r: any) => ({ id: r.id, shelf: r.shelf, rating: r.rating ? Number(r.rating) : undefined, dateFinished: r.date_finished || undefined, isPublic: r.is_public, isFavorite: Boolean(r.is_favorite), book: bookFrom(r.books) }));
+  return (result.data || []).map((r: any) => ({ id: r.id, shelf: r.shelf, rating: r.rating ? Number(r.rating) : undefined, dateFinished: r.date_finished || undefined, isPublic: r.is_public, isFavorite: Boolean(r.is_favorite), source: r.source || undefined, book: bookFrom(r.books) }));
 }
 
 export async function getBallot(clubId: string, userId: string) {
@@ -325,13 +415,16 @@ export async function getBallot(clubId: string, userId: string) {
   if (ballotResult.error && ballotResult.error.code !== 'PGRST116') fail(ballotResult.error, 'Could not load ballot');
   const ballot: any = ballotResult.data;
   if (!ballot) return null;
-  const [nomResult, voteResult] = await Promise.all([
+  const [nomResult, voteResult, preferenceResult] = await Promise.all([
     supabase.from('nominations').select('*,books(*)').eq('ballot_id', ballot.id),
     supabase.from('votes').select('nomination_id').eq('user_id', userId),
+    supabase.from('ballot_preferences').select('nomination_id,preference').eq('ballot_id',ballot.id).eq('user_id',userId),
   ]);
   if (nomResult.error) fail(nomResult.error, 'Could not load ballot books');
   if (voteResult.error) fail(voteResult.error, 'Could not load your vote');
-  return { ...ballot, nominations: (nomResult.data || []).map((n: any) => ({ id: n.id, note: n.note ?? n.why ?? '', book: bookFrom(n.books), voted: (voteResult.data || []).some((v: any) => v.nomination_id === n.id) })) };
+  const legacyPreferenceMode = Boolean(preferenceResult.error && isBallotPreferenceSchemaMissing(preferenceResult.error));
+  if (preferenceResult.error && !legacyPreferenceMode) fail(preferenceResult.error, 'Could not load your ballot preferences');
+  return { ...ballot, legacyPreferenceMode, nominations: (nomResult.data || []).map((n: any) => ({ id: n.id, note: n.note ?? n.why ?? '', book: bookFrom(n.books), voted: (voteResult.data || []).some((v: any) => v.nomination_id === n.id), preference:(preferenceResult.data||[]).find((v:any)=>v.nomination_id===n.id)?.preference })) };
 }
 
 export async function startBallotFromIdeas(clubId: string) {
@@ -347,6 +440,25 @@ export async function castVote(nominationId: string, _userId?: string) {
   const result = await supabase.rpc('cast_ballot_vote', { target_nomination_id: nominationId });
   if (result.error) fail(result.error, 'Could not save vote');
   void trackEvent('ballot_vote_cast',{nominationId});
+}
+
+export async function setBallotPreference(nominationId:string,preference:'strong_yes'|'okay'|'no') {
+  if(!supabase)throw new Error('Supabase unavailable');
+  const result=await supabase.rpc('set_ballot_preference',{target_nomination_id:nominationId,target_preference:preference});
+  if(result.error)fail(result.error,'Could not save your preference');
+  void trackEvent('ballot_preference_saved',{nominationId,preference});
+}
+
+export async function removeClubIdea(clubBookId:string){
+  if(!supabase)throw new Error('Supabase unavailable');
+  const result=await supabase.rpc('remove_club_idea',{target_club_book_id:clubBookId});
+  if(result.error)fail(result.error,'Could not remove this suggestion');
+}
+
+export async function revealPrediction(postId:string){
+  if(!supabase)throw new Error('Supabase unavailable');
+  const result=await supabase.rpc('reveal_prediction',{target_post_id:postId});
+  if(result.error)fail(result.error,'Could not reveal this prediction');
 }
 
 export async function finalizeBallot(ballotId: string) {
@@ -421,6 +533,21 @@ export async function saveClubRating(clubBookId:string,rating:number,review='',r
 export async function archiveClubBook(clubBookId:string){
   if(!supabase)throw new Error('Supabase unavailable');const r=await supabase.rpc('archive_club_book',{target_club_book_id:clubBookId});if(r.error)fail(r.error,'Could not archive book');void trackEvent('book_archived',{clubBookId});return r.data;
 }
+export async function restoreArchivedBook(clubBookId:string){
+  if(!supabase)throw new Error('Supabase unavailable');
+  const r=await supabase.rpc('restore_archived_book',{target_club_book_id:clubBookId});
+  if(r.error){
+    const missingRpc=r.error.code==='PGRST202'||/restore_archived_book|schema cache|could not find the function/i.test(r.error.message||'');
+    if(!missingRpc)fail(r.error,'Could not restore this book');
+    const lookup=await supabase.from('club_books').select('id,club_id,status').eq('id',clubBookId).maybeSingle();
+    if(lookup.error||!lookup.data)throw new Error('Could not restore this book.');
+    const updateBook=await supabase.from('club_books').update({status:'rating'}).eq('id',clubBookId);
+    if(updateBook.error)throw new Error('Could not restore this book.');
+    const updateClub=await supabase.from('clubs').update({status:'rating'}).eq('id',(lookup.data as any).club_id);
+    if(updateClub.error)throw new Error('The book was restored. Refresh the club to continue.');
+  }
+  void trackEvent('book_archive_undone',{clubBookId});
+}
 
 export async function updateProfileBasics(userId:string,displayName:string,username:string){
   if(!supabase)throw new Error('Supabase unavailable');const r=await supabase.from('profiles').update({display_name:displayName.trim(),username:username.trim()||null,updated_at:new Date().toISOString()}).eq('id',userId).select('id').single();if(r.error)fail(r.error,'Could not save profile');
@@ -437,7 +564,22 @@ export async function getNotifications(userId:string):Promise<AppNotification[]>
   if(!supabase)return[];
   const r=await supabase.from('notifications').select('*').eq('user_id',userId).order('created_at',{ascending:false}).limit(100);
   if(r.error)fail(r.error,'Could not load notifications');
-  return (r.data||[]).map((x:any)=>({id:x.id,clubId:x.club_id||undefined,type:x.type,title:x.title,body:x.body||undefined,deepLink:x.deep_link||undefined,readAt:x.read_at||undefined,createdAt:x.created_at}));
+  const rows=r.data||[];
+  const clubIds=[...new Set(rows.map((x:any)=>x.club_id).filter(Boolean))] as string[];
+  const coverByClub=new Map<string,string>();
+  if(clubIds.length){
+    const books=await supabase.from('club_books').select('club_id,status,created_at,books(cover_url)').in('club_id',clubIds).order('created_at',{ascending:false});
+    if(!books.error){
+      const priority=['reading','acquiring','up_next','planning','planning_meeting','meeting','rating'];
+      for(const clubId of clubIds){
+        const candidates=(books.data||[]).filter((x:any)=>x.club_id===clubId);
+        const picked=candidates.find((x:any)=>priority.includes(x.status))||candidates[0];
+        const related:any=picked?.books;const cover=Array.isArray(related)?related[0]?.cover_url:related?.cover_url;
+        if(cover)coverByClub.set(clubId,cover);
+      }
+    }
+  }
+  return rows.map((x:any)=>({id:x.id,clubId:x.club_id||undefined,type:x.type,title:x.title,body:x.body||undefined,deepLink:x.deep_link||undefined,readAt:x.read_at||undefined,createdAt:x.created_at,bookCoverUrl:x.club_id?coverByClub.get(x.club_id):undefined}));
 }
 export async function markNotificationRead(id:string){
   if(!supabase)return;const r=await supabase.from('notifications').update({read_at:new Date().toISOString()}).eq('id',id);if(r.error)fail(r.error,'Could not mark notification read');
@@ -515,35 +657,186 @@ export async function resolveMeetingQuestion(id:string,resolved=true){
 }
 export async function getClubArchive(clubId:string){
   if(!supabase)return[];
-  const {data,error}=await supabase.from('club_books').select('id,status,created_at,books(*),book_ratings(rating,review,recommend,submitted_at,profiles(display_name))').eq('club_id',clubId).in('status',['finished','archived']).order('created_at',{ascending:false});
-  if(error)fail(error,'Could not load club archive');
-  return (data||[]).map((x:any)=>({id:x.id,status:x.status,createdAt:x.created_at,book:bookFrom(x.books),ratings:(x.book_ratings||[]).map((r:any)=>({rating:Number(r.rating),review:r.review||undefined,recommend:r.recommend??undefined,submittedAt:r.submitted_at,displayName:r.profiles?.display_name||'Reader'}))}));
+  const booksResult=await supabase.from('club_books').select('id,status,created_at,books(*)').eq('club_id',clubId).in('status',['finished','archived']).order('created_at',{ascending:false});
+  if(booksResult.error)fail(booksResult.error,'Could not load club archive');
+  const rows=booksResult.data||[],bookIds=rows.map((x:any)=>x.id);
+  if(!bookIds.length)return[];
+  const ratingsResult=await supabase.from('book_ratings').select('club_book_id,user_id,rating,review,recommend,submitted_at').in('club_book_id',bookIds);
+  if(ratingsResult.error)fail(ratingsResult.error,'Could not load club ratings');
+  const ratings=ratingsResult.data||[],userIds=[...new Set(ratings.map((x:any)=>x.user_id).filter(Boolean))] as string[];
+  let names=new Map<string,string>();
+  if(userIds.length){
+    const profilesResult=await supabase.from('profiles').select('id,display_name').in('id',userIds);
+    if(!profilesResult.error)names=new Map((profilesResult.data||[]).map((x:any)=>[x.id,x.display_name||'Reader']));
+  }
+  return rows.map((x:any)=>({id:x.id,status:x.status,createdAt:x.created_at,book:bookFrom(x.books),ratings:ratings.filter((r:any)=>r.club_book_id===x.id).map((r:any)=>({rating:Number(r.rating),review:r.review||undefined,recommend:r.recommend??undefined,submittedAt:r.submitted_at,displayName:names.get(r.user_id)||'Reader'}))}));
 }
 export async function getUnreadNotificationCount(userId:string){
   if(!supabase)return 0;const {count,error}=await supabase.from('notifications').select('id',{count:'exact',head:true}).eq('user_id',userId).is('read_at',null);if(error)return 0;return count||0;
 }
 
-export async function importGoodreads(userId: string, file: File) {
-  const sb = supabase;
-  if (!sb) throw new Error('Supabase unavailable');
-  const text = await file.text();
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  if (lines.length < 2) throw new Error('No Goodreads rows found');
-  const parse = (line: string) => {
-    const out: string[] = []; let cur = '', q = false;
-    for (let i = 0; i < line.length; i++) { const ch = line[i]; if (ch === '"') { if (q && line[i+1] === '"') { cur += '"'; i++; } else q = !q; } else if (ch === ',' && !q) { out.push(cur); cur = ''; } else cur += ch; }
-    out.push(cur); return out;
-  };
-  const headers = parse(lines[0]);
-  const idx = (name: string) => headers.indexOf(name);
-  const rows = lines.slice(1).map(parse);
-  let imported = 0;
-  for (const r of rows.slice(0, 1000)) {
-    const title = r[idx('Title')], author = r[idx('Author')], isbn = (r[idx('ISBN13')] || r[idx('ISBN')] || '').replace(/[="']/g, ''), shelf = (r[idx('Exclusive Shelf')] || 'to-read').replace('to-read', 'want_to_read').replace('currently-reading', 'currently_reading'), rating = Number(r[idx('My Rating')]) || undefined, date = r[idx('Date Read')] || undefined;
-    if (!title) continue;
-    await savePersonalBook(userId, { title, author: author || 'Unknown author', isbn }, { shelf, rating, dateFinished: date, isFavorite: rating === 5, source: 'goodreads' });
-    imported++;
+export type ReadingPreferences={avoidances:string[];moods:string[]};
+export async function getReadingPreferences(userId:string):Promise<ReadingPreferences>{
+  if(!supabase)return{avoidances:[],moods:[]};
+  const r=await supabase.from('user_preferences').select('reading_avoidances,reading_moods').eq('user_id',userId).maybeSingle();
+  if(r.error&&r.error.code!=='PGRST116')fail(r.error,'Could not load recommendation preferences');
+  return{avoidances:(r.data as any)?.reading_avoidances||[],moods:(r.data as any)?.reading_moods||[]};
+}
+export async function updateReadingPreferences(userId:string,prefs:ReadingPreferences){
+  if(!supabase)throw new Error('Supabase unavailable');
+  const r=await supabase.from('user_preferences').upsert({user_id:userId,reading_avoidances:prefs.avoidances,reading_moods:prefs.moods,updated_at:new Date().toISOString()},{onConflict:'user_id'});
+  if(r.error)fail(r.error,'Could not save recommendation preferences');
+}
+
+export async function previewClubInvite(code:string){
+  if(!supabase)throw new Error('Supabase unavailable');
+  const clean=code.trim().split('/').filter(Boolean).pop()||code;
+  const r=await supabase.rpc('preview_club_invite',{supplied_invite_code:clean});
+  if(r.error)fail(r.error,'This invite is no longer available');
+  return r.data as any;
+}
+export async function getClubInvites(clubId:string){
+  if(!supabase)return[];
+  const r=await supabase.from('club_invites').select('id,code,expires_at,revoked_at,created_at').eq('club_id',clubId).order('created_at',{ascending:false});
+  if(r.error)fail(r.error,'Could not load invite links');
+  return r.data||[];
+}
+export async function resetClubInvite(clubId:string){
+  if(!supabase)throw new Error('Supabase unavailable');
+  const r=await supabase.rpc('reset_club_invite',{target_club_id:clubId});
+  if(r.error)fail(r.error,'Could not reset invite link');
+  return String(r.data||'');
+}
+export async function disableClubInvites(clubId:string){
+  if(!supabase)throw new Error('Supabase unavailable');
+  const r=await supabase.rpc('disable_club_invites',{target_club_id:clubId});
+  if(r.error)fail(r.error,'Could not disable invite links');
+}
+export async function getSharedMemberProfile(clubId:string,memberId:string){
+  if(!supabase)throw new Error('Supabase unavailable');
+  const r=await supabase.rpc('get_shared_member_profile',{target_club_id:clubId,target_user_id:memberId});
+  if(!r.error)return r.data as any;
+  const missingRpc=r.error.code==='PGRST202'||/get_shared_member_profile|schema cache|could not find the function/i.test(r.error.message||'');
+  if(!missingRpc)fail(r.error,'Could not load member profile');
+  const membership=await supabase.from('club_members').select('user_id').eq('club_id',clubId).eq('user_id',memberId).maybeSingle();
+  if(membership.error||!membership.data)throw new Error('This reader is not available in this club.');
+  const [profileResult,booksResult]=await Promise.all([
+    supabase.from('profiles').select('id,display_name,username,avatar_url,profile_style').eq('id',memberId).maybeSingle(),
+    supabase.from('personal_books').select('id,shelf,rating,date_finished,is_favorite,is_public,books(*)').eq('user_id',memberId).eq('is_public',true),
+  ]);
+  if(profileResult.error)fail(profileResult.error,'Could not load member profile');
+  if(booksResult.error)fail(booksResult.error,'Could not load shared books');
+  const p:any=profileResult.data;
+  return {profile:p?{id:p.id,displayName:p.display_name||'Reader',username:p.username||undefined,avatarUrl:p.avatar_url||undefined,style:p.profile_style||undefined}:null,books:(booksResult.data||[]).map((x:any)=>({id:x.id,shelf:x.shelf,rating:x.rating?Number(x.rating):undefined,dateFinished:x.date_finished||undefined,isFavorite:Boolean(x.is_favorite),book:bookFrom(x.books)}))};
+}
+export async function leaveClub(clubId:string){
+  if(!supabase)throw new Error('Supabase unavailable');
+  const r=await supabase.rpc('leave_club',{target_club_id:clubId});
+  if(r.error)fail(r.error,'Could not leave club');
+}
+export async function removeClubMember(clubId:string,userId:string){
+  if(!supabase)throw new Error('Supabase unavailable');
+  const r=await supabase.rpc('remove_club_member',{target_club_id:clubId,target_user_id:userId});
+  if(r.error)fail(r.error,'Could not remove member');
+}
+export async function transferClubOwnership(clubId:string,userId:string){
+  if(!supabase)throw new Error('Supabase unavailable');
+  const r=await supabase.rpc('transfer_club_ownership',{target_club_id:clubId,target_user_id:userId});
+  if(r.error)fail(r.error,'Could not transfer ownership');
+}
+
+export type GoodreadsImportBook={
+  title:string;author:string;isbn?:string;isbn13?:string;rating?:number;pages?:number;year?:number;dateRead?:string;shelf:'read'|'currently_reading'|'want_to_read';cover?:string;
+};
+export type GoodreadsImportPreview={total:number;read:number;currentlyReading:number;wantToRead:number;rated:number;samples:GoodreadsImportBook[]};
+export type GoodreadsImportResult=GoodreadsImportPreview&{imported:number};
+
+function parseCsvDocument(text:string){
+  const rows:string[][]=[];let row:string[]=[],cell='',quoted=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
+    if(quoted){
+      if(ch==='"'&&text[i+1]==='"'){cell+='"';i++;continue}
+      if(ch==='"'){quoted=false;continue}
+      cell+=ch;continue;
+    }
+    if(ch==='"'){quoted=true;continue}
+    if(ch===','){row.push(cell);cell='';continue}
+    if(ch==='\n'||ch==='\r'){
+      if(ch==='\r'&&text[i+1]==='\n')i++;
+      row.push(cell);cell='';
+      if(row.some(value=>value.trim()!==''))rows.push(row);
+      row=[];continue;
+    }
+    cell+=ch;
+  }
+  if(cell.length||row.length){row.push(cell);if(row.some(value=>value.trim()!==''))rows.push(row)}
+  if(quoted)throw new Error('This CSV looks incomplete. Export a fresh Goodreads library file and try again.');
+  return rows;
+}
+function cleanGoodreadsIsbn(value?:string){return (value||'').replace(/[="']/g,'').replace(/\s/g,'').trim()||undefined}
+function goodreadsCover(isbn?:string){return isbn?`https://covers.openlibrary.org/b/isbn/${encodeURIComponent(isbn)}-L.jpg?default=false`:undefined}
+function normalizeGoodreadsShelf(value?:string):GoodreadsImportBook['shelf']{
+  const shelf=(value||'').toLowerCase();
+  if(/(^|[,;\s])currently-reading($|[,;\s])/.test(shelf))return'currently_reading';
+  if(/(^|[,;\s])read($|[,;\s])/.test(shelf))return'read';
+  return'want_to_read';
+}
+function normalizeGoodreadsDate(value?:string){
+  const raw=(value||'').trim();if(!raw)return undefined;
+  const m=raw.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
+  return m?`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`:raw;
+}
+function parseGoodreadsText(text:string):GoodreadsImportBook[]{
+  const matrix=parseCsvDocument(text.replace(/^\uFEFF/,''));
+  if(matrix.length<2)throw new Error('No Goodreads books were found in this file.');
+  const headers=matrix[0].map(x=>x.trim()),required=['Title','Author'];
+  const goodreadsSignals=['Book Id','Exclusive Shelf','Bookshelves','My Rating','Date Added'];
+  if(required.some(name=>!headers.includes(name))||!goodreadsSignals.some(name=>headers.includes(name)))throw new Error('This does not look like a Goodreads library export. Choose the CSV downloaded from Goodreads.');
+  const idx=(name:string)=>headers.indexOf(name);
+  return matrix.slice(1).map(values=>{
+    const get=(name:string)=>{const i=idx(name);return i>=0?(values[i]||'').trim():''};
+    const title=get('Title'),author=get('Author')||'Unknown author';
+    if(!title)return null;
+    const isbn13=cleanGoodreadsIsbn(get('ISBN13')),isbn=cleanGoodreadsIsbn(get('ISBN')),preferredIsbn=isbn13||isbn;
+    const rawRating=Number(get('My Rating')),rating=rawRating>=1&&rawRating<=5?rawRating:undefined;
+    const pagesRaw=Number(get('Number of Pages')),yearRaw=Number(get('Year Published')||get('Original Publication Year'));
+    return {title,author,isbn,isbn13,rating,pages:pagesRaw>0?pagesRaw:undefined,year:yearRaw>0?yearRaw:undefined,dateRead:normalizeGoodreadsDate(get('Date Read')),shelf:normalizeGoodreadsShelf(get('Exclusive Shelf')||get('Bookshelves')),cover:goodreadsCover(preferredIsbn)} as GoodreadsImportBook;
+  }).filter((row):row is GoodreadsImportBook=>Boolean(row));
+}
+function summarizeGoodreads(rows:GoodreadsImportBook[]):GoodreadsImportPreview{
+  return {total:rows.length,read:rows.filter(x=>x.shelf==='read').length,currentlyReading:rows.filter(x=>x.shelf==='currently_reading').length,wantToRead:rows.filter(x=>x.shelf==='want_to_read').length,rated:rows.filter(x=>x.rating!=null).length,samples:rows.slice(0,6)};
+}
+export async function previewGoodreadsImport(file:File):Promise<GoodreadsImportPreview>{
+  if(!/\.csv$/i.test(file.name)&&file.type&&!/csv/i.test(file.type))throw new Error('Choose a Goodreads CSV file.');
+  return summarizeGoodreads(parseGoodreadsText(await file.text()));
+}
+
+export async function importGoodreads(userId:string,file:File,onProgress?:(done:number,total:number)=>void):Promise<GoodreadsImportResult>{
+  const sb=supabase;if(!sb)throw new Error('Supabase unavailable');
+  const rows=parseGoodreadsText(await file.text()),summary=summarizeGoodreads(rows);let imported=0;
+  for(const item of rows){
+    const preferredIsbn=item.isbn13||item.isbn;
+    const bookId=await ensureBook({title:item.title,author:item.author,isbn:preferredIsbn,pages:item.pages,year:item.year,cover:item.cover});
+    if(item.cover){await sb.from('books').update({cover_url:item.cover}).eq('id',bookId).is('cover_url',null)}
+    const existing=await sb.from('personal_books').select('id,rating,date_finished,is_favorite,is_public,source').eq('user_id',userId).eq('book_id',bookId).maybeSingle();
+    if(existing.error&&existing.error.code!=='PGRST116')fail(existing.error,'Could not check your existing library');
+    const now=new Date().toISOString();
+    if(existing.data?.id){
+      const patch:any={shelf:item.shelf,source:'goodreads',updated_at:now};
+      if(item.rating!=null)patch.rating=item.rating;
+      else if(existing.data.source==='goodreads')patch.rating=null;
+      if(item.dateRead)patch.date_finished=item.dateRead;
+      else if(existing.data.source==='goodreads')patch.date_finished=null;
+      const updated=await sb.from('personal_books').update(patch).eq('id',existing.data.id).eq('user_id',userId);
+      if(updated.error)fail(updated.error,'Could not update a Goodreads book');
+    }else{
+      const inserted=await sb.from('personal_books').insert({user_id:userId,book_id:bookId,shelf:item.shelf,rating:item.rating??null,date_finished:item.dateRead||null,source:'goodreads',is_favorite:false,updated_at:now});
+      if(inserted.error)fail(inserted.error,'Could not import a Goodreads book');
+    }
+    imported++;onProgress?.(imported,rows.length);
   }
   void trackEvent('goodreads_import_completed',{imported});
-  return imported;
+  return {...summary,imported};
 }
+

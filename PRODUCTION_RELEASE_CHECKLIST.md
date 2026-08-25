@@ -1,111 +1,94 @@
 # BOOK CLUB production release checklist
 
-Use this once. A failed item is a blocker rather than a reason to add another frontend fallback.
+A failed item is a blocker. Do not add a frontend fallback to hide a backend/privacy failure.
 
-## A. Database
+## 1. Database + privacy
 
-1. Open Supabase → SQL Editor.
-2. Run `supabase/migrations/009_FINAL_RELEASE.sql` once.
-3. Inspect the final `book_club_release_check()` table.
-4. Require **PASS on every row**.
-5. Confirm Authentication → URL Configuration contains localhost and the production Pages domain.
-6. Confirm RLS remains enabled on private product tables.
+- Run `supabase/migrations/009_FINAL_RELEASE.sql` once against the existing Supabase project.
+- Require every `book_club_release_check()` row to be `PASS`.
+- Confirm production + localhost auth redirect URLs.
+- Confirm RLS is enabled on all private club/social tables.
+- Run a 3-account isolation test: Alice + Bob in Club A, Bob + Carol in Club B. Alice must never see Club B; Carol must never see Club A through UI, guessed routes, REST, RPC, or realtime.
+- Verify club invite reset/disable invalidates the old link.
+- Verify a member can leave, an owner must transfer ownership first, and removing a member preserves historical posts/ratings.
 
-## B. Cloudflare Pages
+## 2. Core friend-group loop
 
-Set:
+- Join from an invite and confirm the preview shows the real club, members, and books being considered before joining.
+- Suggest 2+ books. Search query, results, scroll position, and browser Back state must survive opening a book and returning.
+- Verify every visible book cover opens the book; member avatars/names open member profiles.
+- Remove a suggestion and use Undo.
+- Vote with **Want to read / Would read / Not this time**. Preferences remain private while voting is open.
+- Finalize and verify broad-support selection moves the winner into acquisition.
+- Check in with different formats, then verify the **Everyone has their book** state when complete.
+- Update reading progress by chapter, page, and percentage from different accounts.
+- Mark one account DNF and verify it remains eligible for meeting participation without being counted as finished.
+- Post a spoiler-ahead thought; verify it stays hidden for the reader behind and unlocks after progress catches up.
+- Create a prediction; verify it is visually sealed until revealed in Meeting Mode.
+- Reply/react and verify realtime behavior.
+- Set a finish date and verify checkpoints.
+- Schedule a meeting, RSVP, open Meeting Mode, reveal predictions, review agenda, and rate the book.
+- Archive the book, use Undo immediately, then archive again and verify it appears on the club shelf / annual history.
+- Start the next cycle.
+
+## 3. Personal reading + recommendations
+
+- Save Want to Read / Reading / Read / Favorite from a book page and verify club suggestion remains a separate action.
+- Toggle a personal book private; verify another member cannot see it on the shared profile.
+- Rate a finished personal book.
+- Set current recommendation avoidances/moods; verify recommendations respect negative taste and explain **why this fits** in human terms rather than percentages.
+- Search a title with multiple editions and verify canonical results are not duplicated or ranked behind odd editions.
+- Test a missing cover and verify the typographic cover fallback.
+
+## 4. Trust + interruption handling
+
+- Every mutation must visibly change state or show a concise confirmation.
+- Draft a long discussion post, navigate away/back, and verify the draft remains.
+- Force a post failure; verify the draft remains with a retryable error.
+- Force profile sticker save failure; verify the local layout remains and retry is possible.
+- Delete a sticker and use Undo before saving.
+- Simulate a failed/slow network and verify last-saved club content can still render; no infinite loaders.
+- Return after 48+ hours and verify the Home catch-up state prioritizes meaningful changes instead of activity noise.
+
+## 5. Mobile + accessibility QA
+
+Test 375px, 390px, and 430px widths, plus landscape, with:
+
+- iOS/Safari toolbar expanded
+- keyboard open in composer + sticker search
+- long book title
+- long club name
+- 5+ members
+- 20 nominations
+- missing cover
+- modal open
+- browser zoom / larger text
+
+Verify 44px-ish touch targets on consequential controls, visible keyboard focus, semantic buttons, alt text, contrast, no information by color alone, and reduced-motion behavior.
+
+## 6. Worker + integrations
+
+Frontend vars:
+
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 - `VITE_API_BASE_URL`
 
-Build: `npm run build`  
-Output: `dist`
+Worker vars/secrets are documented in `worker/.dev.vars.example` and `worker/wrangler.toml`. The service-role key and provider secrets must never be exposed to the frontend.
 
-## C. Worker
+Verify:
 
-Set public vars:
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- `APP_ORIGIN`
-- `GOOGLE_REDIRECT_URI`
-- `OPENAI_MODEL`
+- Reader context omits unsupported/low-confidence material rather than inventing it.
+- Author imagery is relevant; low-confidence imagery is omitted.
+- AI unavailable → core reading flows still work and context/recommendations fail gracefully.
+- Google Calendar connect, sync, update, and remove event all work when configured.
 
-Set secrets:
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `OPENAI_API_KEY`
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
-- `CALENDAR_STATE_SECRET` (random high-entropy string)
-- `TOKEN_ENCRYPTION_KEY` (random high-entropy string)
-
-Google OAuth redirect URI must exactly equal:
-`https://<worker-origin>/api/calendar/callback`
-
-## D. Auth/email
-
-- Verify signup confirmation on production domain.
-- Verify password recovery returns to the production app and lets the user set a new password.
-- Before inviting a broad group, configure production SMTP rather than relying on development email limits.
-
-## E. Live 3-account privacy test
-
-Use three test accounts: Alice, Bob, Carol.
-
-- Alice creates Club A and invites Bob.
-- Bob joins Club A.
-- Bob creates Club B and invites Carol.
-- Carol joins Club B.
-- Alice must not see Club B in club list, guessed route, REST data, RPC results or realtime events.
-- Carol must not see Club A.
-
-## F. Complete lifecycle test
-
-Using Alice + Bob in Club A:
-
-1. Search and quick-add two different book ideas.
-2. Verify search query/results do not disappear after quick add.
-3. Open idea cover and verify correct decision page.
-4. Verify Suggested by attribution.
-5. Start hidden vote; each account votes; change one vote.
-6. Close/finalize vote; verify one winner enters acquisition rather than Reading immediately.
-7. Both members check in with formats.
-8. Set finish date and generate reading checkpoints.
-9. Update progress from both accounts.
-10. Post a thought ahead of the other reader; confirm it is hidden/locked for the reader behind.
-11. Catch up; confirm the thought unlocks.
-12. Reply/react; verify realtime update without refresh.
-13. Save a post to meeting agenda.
-14. Schedule meeting; RSVP from second account.
-15. Connect Google Calendar; sync meeting; edit meeting and verify event updates; cancel and verify event removal.
-16. Finish the book; rate/review from both accounts.
-17. Archive; verify archive + annual volume.
-18. Begin a second idea/vote cycle.
-
-## G. Personal/profile test
-
-- Save Want to Read, Currently Reading, Read and Favorite books from Search.
-- Verify Favorite appears immediately and survives refresh/login.
-- Rate a finished personal book and verify average rating.
-- Import Goodreads CSV; re-import the same CSV and verify no destructive duplicate behavior.
-- Add/move/resize/rotate a sticker; Done; refresh; verify exact position/scale/rotation persists.
-- Open sticker editor on iPhone Safari with keyboard visible; confirm canvas remains visible.
-
-## H. Failure-state test
-
-Temporarily disable/point away from the Worker and verify:
-- core club/search/read flows still work
-- AI context/recommendations fail gracefully
-- no fake context is invented
-- no infinite loaders
-
-Test missing cover, long book title, empty club, no meeting, no archive, slow network and provider timeout states.
-
-## I. Automated local release gate
+## 7. Automated local gate
 
 ```bash
-npm install
+npm ci
 npm run test:release
 npm run build
 ```
 
-Only deploy when the build succeeds and the live SQL + multi-account tests pass.
+Only deploy after both commands pass and the live privacy/lifecycle checks above are complete.

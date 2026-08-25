@@ -3,7 +3,7 @@ import { ArrowLeft, CalendarDays, Download, KeyRound, Link2, LogOut, RefreshCw, 
 import { useRouter } from '../lib/router';
 import { useApp } from '../lib/AppContext';
 import { supabase } from '../lib/supabase';
-import { deleteMyAccount, getMyExportData, getNotificationMode, updateNotificationMode, updateProfileBasics } from '../lib/data';
+import { deleteMyAccount, getMyExportData, getNotificationMode, getReadingPreferences, updateNotificationMode, updateProfileBasics, updateReadingPreferences } from '../lib/data';
 import { Modal } from '../components/Modal';
 import { beginCalendarConnect, disconnectCalendar, getApiHealth, getCalendarStatus, type CalendarStatus } from '../lib/api';
 
@@ -21,9 +21,11 @@ export function SettingsPage(){
   const[calendar,setCalendar]=useState<CalendarStatus>({configured:false,connected:false});
   const[health,setHealth]=useState<any>(null);
   const[integrationBusy,setIntegrationBusy]=useState(false);
+  const[avoidances,setAvoidances]=useState<string[]>([]);
+  const[moods,setMoods]=useState<string[]>([]);
 
   useEffect(()=>{setName(a.profile?.displayName||'');setUsername(a.profile?.username||'')},[a.profile?.displayName,a.profile?.username]);
-  useEffect(()=>{if(a.user)void getNotificationMode(a.user.id).then(setNotificationMode).catch(e=>setNotice({kind:'error',text:e.message}))},[a.user?.id]);
+  useEffect(()=>{if(a.user){void getNotificationMode(a.user.id).then(setNotificationMode).catch(e=>setNotice({kind:'error',text:e.message}));void getReadingPreferences(a.user.id).then(p=>{setAvoidances(p.avoidances);setMoods(p.moods)}).catch(()=>{})}},[a.user?.id]);
   async function loadIntegrations(){const [cal,h]=await Promise.all([getCalendarStatus(),getApiHealth()]);setCalendar(cal);setHealth(h)}
   useEffect(()=>{void loadIntegrations()},[]);
 
@@ -87,16 +89,24 @@ export function SettingsPage(){
     </section>
 
     <section className="settings-section">
-      <div className="settings-section-head"><h2>Notifications</h2><span>Choose how noisy BOOK CLUB should be</span></div>
+      <div className="settings-section-head"><h2>Notifications</h2><span>Only interrupt me when there’s something useful to do</span></div>
       <div className="notification-options" role="radiogroup" aria-label="Notification preference">
-        {[['essential','Essential','Votes, meeting changes, replies, and club actions'],['all','Everything','Essential updates plus reading and activity nudges'],['quiet','Quiet','Only direct replies and important meeting changes']].map(([value,title,desc])=><button type="button" role="radio" aria-checked={notificationMode===value} className={notificationMode===value?'selected':''} key={value} onClick={()=>void saveNotifications(value)}><b>{title}</b><span>{desc}</span></button>)}
+        {[['essential','Essential','Voting, replies, meeting changes, and the next book'],['quiet','Quiet','Only direct replies and important meeting changes']].map(([value,title,desc])=><button type="button" role="radio" aria-checked={notificationMode===value} className={notificationMode===value?'selected':''} key={value} onClick={()=>void saveNotifications(value)}><b>{title}</b><span>{desc}</span></button>)}
       </div>
+    </section>
+
+
+    <section className="settings-section taste-settings">
+      <div className="settings-section-head"><h2>What are you in the mood for?</h2><span>This helps club recommendations feel timely, not generic.</span></div>
+      <div className="taste-question"><b>Anything you’re not feeling right now?</b><div className="taste-chips">{['Romance','500+ pages','Fantasy','Something depressing','Nonfiction'].map(x=><button type="button" key={x} className={avoidances.includes(x)?'selected':''} onClick={()=>setAvoidances(v=>v.includes(x)?v.filter(y=>y!==x):[...v,x])}>{x}</button>)}</div></div>
+      <div className="taste-question"><b>What would hit right?</b><div className="taste-chips">{['Lighter','Shorter','Fast-moving','Conversation-heavy','Surprising'].map(x=><button type="button" key={x} className={moods.includes(x)?'selected':''} onClick={()=>setMoods(v=>v.includes(x)?v.filter(y=>y!==x):[...v,x])}>{x}</button>)}</div></div>
+      <button type="button" className="secondary settings-save" disabled={!a.user||busy==='taste'} onClick={()=>a.user&&run('taste',()=>updateReadingPreferences(a.user!.id,{avoidances,moods}),'Reading mood saved.')}>{busy==='taste'?'Saving…':'Save reading mood'}</button>
     </section>
 
     <section className="settings-section integrations-section">
       <div className="settings-section-head"><h2>Integrations</h2><span>Optional connections that reduce club admin</span></div>
-      <div className="integration-row"><div className="integration-mark"><CalendarDays/></div><div className="integration-copy"><b>Google Calendar</b><span>{!calendar.configured?'Needs production credentials before it can connect.':calendar.connected?`Connected${calendar.email?` · ${calendar.email}`:''}`:'Connect once to add and update BOOK CLUB meetings automatically.'}</span></div>{calendar.connected?<button type="button" className="secondary" disabled={integrationBusy} onClick={async()=>{setIntegrationBusy(true);try{await disconnectCalendar();await loadIntegrations();setNotice({kind:'ok',text:'Google Calendar disconnected.'})}catch(e:any){setNotice({kind:'error',text:e?.message||'Could not disconnect Calendar.'})}finally{setIntegrationBusy(false)}}}><Unlink/> Disconnect</button>:<button type="button" className="primary" disabled={!calendar.configured||integrationBusy} onClick={async()=>{setIntegrationBusy(true);try{await beginCalendarConnect()}catch(e:any){setNotice({kind:'error',text:e?.message||'Could not connect Calendar.'});setIntegrationBusy(false)}}}><Link2/> Connect</button>}</div>
-      <div className="service-health" aria-label="Integration status"><span className={health?.services?.openLibrary?'ok':''}>Book catalog</span><span className={health?.services?.ai?'ok':''}>Research AI</span><span className={health?.services?.calendarConfigured?'ok':''}>Calendar sync</span><button type="button" onClick={()=>void loadIntegrations()} aria-label="Refresh integration status"><RefreshCw/></button></div>
+      <div className="integration-row"><div className="integration-mark"><CalendarDays/></div><div className="integration-copy"><b>Google Calendar</b><span>{!calendar.configured?'Calendar connection isn’t available in this build yet.':calendar.connected?`Connected${calendar.email?` · ${calendar.email}`:''}`:'Connect once to add and update BOOK CLUB meetings automatically.'}</span></div>{calendar.connected?<button type="button" className="secondary" disabled={integrationBusy} onClick={async()=>{setIntegrationBusy(true);try{await disconnectCalendar();await loadIntegrations();setNotice({kind:'ok',text:'Google Calendar disconnected.'})}catch(e:any){setNotice({kind:'error',text:e?.message||'Could not disconnect Calendar.'})}finally{setIntegrationBusy(false)}}}><Unlink/> Disconnect</button>:<button type="button" className="primary" disabled={!calendar.configured||integrationBusy} onClick={async()=>{setIntegrationBusy(true);try{await beginCalendarConnect()}catch(e:any){setNotice({kind:'error',text:e?.message||'Could not connect Calendar.'});setIntegrationBusy(false)}}}><Link2/> Connect</button>}</div>
+      <div className="service-health" aria-label="Integration status"><span className={health?.services?.openLibrary?'ok':''}>Book search</span><span className={health?.services?.ai?'ok':''}>Book context</span><span className={health?.services?.calendarConfigured?'ok':''}>Calendar</span><button type="button" onClick={()=>void loadIntegrations()} aria-label="Refresh integration status"><RefreshCw/></button></div>
     </section>
 
     <section className="settings-section">

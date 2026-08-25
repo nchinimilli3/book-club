@@ -7,7 +7,7 @@ async function authHeaders(extra:Record<string,string>={}){
   return {...extra,...(token?{authorization:`Bearer ${token}`}:{})};
 }
 async function apiJson(path:string,init:RequestInit={}){
-  if(!API)throw new Error('BOOK CLUB API is not configured.');
+  if(!API)throw new Error('This connected feature isn’t available right now.');
   const r=await fetch(`${API}${path}`,{...init,headers:await authHeaders(init.headers as Record<string,string>||{})});
   const body=await r.json().catch(()=>({}));
   if(!r.ok)throw new Error(body?.error||`Request failed (${r.status})`);
@@ -54,8 +54,11 @@ export async function getReaderContext(input:{title:string;author:string;year?:n
 
 export type ClubRecommendation={title:string;author:string;reason:string;cover?:string;year?:number;pages?:number;isbn?:string;description?:string;confidence?:string};
 export async function getClubRecommendations(clubId:string):Promise<ClubRecommendation[]>{
-  const j=await apiJson('/api/recommendations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({clubId})});
-  return Array.isArray(j?.suggestions)?j.suggestions:[];
+  if(!API)return[];
+  try{
+    const j=await apiJson('/api/recommendations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({clubId})});
+    return Array.isArray(j?.suggestions)?j.suggestions:[];
+  }catch{return[]}
 }
 
 export type CalendarStatus={configured:boolean;connected:boolean;email?:string;lastSyncedAt?:string};
@@ -70,3 +73,22 @@ export async function disconnectCalendar(){return apiJson('/api/calendar/disconn
 export async function syncMeetingToCalendar(meetingId:string){return apiJson('/api/calendar/sync',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({meetingId})})}
 export async function removeMeetingFromCalendar(meetingId:string){return apiJson('/api/calendar/remove-event',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({meetingId})})}
 export async function getApiHealth(){if(!API)return{ok:false,configured:false};try{return{...(await apiJson('/api/health')),configured:true}}catch{return{ok:false,configured:true}}}
+
+export type DiscoveryBook={key:string;source:'nyt'|'apple';title:string;author:string;cover:string;year?:number;isbn?:string;subjects?:string[];rank?:number;weeksOnList?:number;listName?:string;storeUrl?:string};
+export async function getBookDiscovery():Promise<{nyt:DiscoveryBook[];apple:DiscoveryBook[];nytConfigured:boolean}>{
+  if(!API)return{nyt:[],apple:[],nytConfigured:false};
+  try{const j=await apiJson('/api/book-discovery');return{nyt:Array.isArray(j?.nyt)?j.nyt:[],apple:Array.isArray(j?.apple)?j.apple:[],nytConfigured:Boolean(j?.nytConfigured)}}catch{return{nyt:[],apple:[],nytConfigured:false}}
+}
+
+
+export type PassageTranscription={
+  text:string;
+  confidence:number;
+  needsReview:boolean;
+  pageNumber?:number;
+  chapterNumber?:number;
+};
+export async function transcribePassage(input:{imageDataUrl:string;title:string;author:string;currentChapter?:number}):Promise<PassageTranscription>{
+  const j=await apiJson('/api/transcribe-passage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});
+  return {text:String(j?.text||''),confidence:Number(j?.confidence||0),needsReview:Boolean(j?.needsReview),pageNumber:Number(j?.pageNumber)||undefined,chapterNumber:Number(j?.chapterNumber)||undefined};
+}

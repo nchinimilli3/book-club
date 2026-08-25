@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="BOOK CLUB">
+  <rect width="64" height="64" rx="14" fill="#f4efe8"/>
+  <rect x="8" y="8" width="48" height="48" rx="10" fill="none" stroke="#241e1a" stroke-width="2"/>
+  <text x="32" y="40" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="25" font-weight="700" letter-spacing="-1" fill="#241e1a">BC</text>
+</svg>

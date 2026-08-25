@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test:smoke": "node scripts/smoke.mjs",
     "test:audit": "node scripts/release-audit.mjs && node scripts/audit-contract.mjs",
-    "test:release": "tsc -b --pretty false && node scripts/smoke.mjs && node scripts/release-audit.mjs && node scripts/audit-contract.mjs && node --check worker/index.js"
+    "test:release": "tsc -b --pretty false && node scripts/smoke.mjs && node scripts/release-audit.mjs && node scripts/audit-contract.mjs && node --check worker/index.js && node scripts/audit-ui-primitives.mjs",
+    "test:ui": "node scripts/audit-ui-primitives.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.56.0",

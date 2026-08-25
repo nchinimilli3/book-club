@@ -2,16 +2,23 @@ name = "book-club-api"
 main = "index.js"
 compatibility_date = "2026-08-01"
 
-# Non-secret production variables can be configured in Cloudflare.
-# APP_ORIGIN = "https://book-club-cog.pages.dev"
+# Configure non-secret production variables in Cloudflare:
+# APP_ORIGIN = "https://YOUR_APP.pages.dev"
 # SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
-# SUPABASE_ANON_KEY = "YOUR_PUBLIC_ANON_KEY"
+# SUPABASE_ANON_KEY = "YOUR_PUBLISHABLE_KEY"
 # GOOGLE_REDIRECT_URI = "https://YOUR_WORKER.workers.dev/api/calendar/callback"
-
-# Secrets (use `wrangler secret put NAME`):
+# OPENAI_MODEL = "gpt-5.6"
+# OPENAI_VISION_MODEL = "gpt-5.6"  # optional override for Quick Add passage scanning
+#
+# Optional enrichment vars:
+# TMDB_BEARER_TOKEN = "..."  # prefer a secret if you consider this sensitive
+# YOUTUBE_API_KEY = "..."     # prefer a secret
+#
+# Secrets (wrangler secret put NAME):
 # SUPABASE_SERVICE_ROLE_KEY
 # OPENAI_API_KEY
 # GOOGLE_CLIENT_ID
 # GOOGLE_CLIENT_SECRET
 # CALENDAR_STATE_SECRET
 # TOKEN_ENCRYPTION_KEY
+# NYT_BOOKS_API_KEY is a secret: wrangler secret put NYT_BOOKS_API_KEY

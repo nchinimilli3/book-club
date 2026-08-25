@@ -1,20 +1,35 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { ArrowRight, Users } from 'lucide-react';
+import { BookCover } from '../components/BookCover';
 import { useApp } from '../lib/AppContext';
-import { joinClub } from '../lib/data';
+import { joinClub, previewClubInvite } from '../lib/data';
 import { useRouter } from '../lib/router';
+import { FeedbackMessage } from '../components/PageState';
 
 export function JoinInvitePage({code}:{code:string}){
   const a=useApp(),{navigate}=useRouter();
-  const[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const[busy,setBusy]=useState(false),[error,setError]=useState(''),[preview,setPreview]=useState<any>(null),[loading,setLoading]=useState(true);
+  useEffect(()=>{let cancelled=false;previewClubInvite(code).then(x=>{if(!cancelled)setPreview(x)}).catch(e=>{if(!cancelled)setError(e?.message||'This invite is no longer available.')} ).finally(()=>{if(!cancelled)setLoading(false)});return()=>{cancelled=true}},[code]);
   async function join(){
     setBusy(true);setError('');
     try{
       const joined:any=await joinClub(code);
       await a.refresh();
-      const id=joined?.id || a.clubs.find(c=>c.inviteCode===code)?.id;
-      if(id){await a.selectClub(id);navigate(`/clubs/${id}`,true)}
+      const id=joined?.id||preview?.id||a.clubs.find(c=>c.inviteCode===code)?.id;
+      if(id){await a.selectClub(id);sessionStorage.setItem('bookclub:just-joined',id);navigate(`/clubs/${id}`,true)}
       else navigate('/clubs',true);
     }catch(e:any){setError(e?.message||'Could not join this club.')}finally{setBusy(false)}
   }
-  return <div className="page join-page"><section className="join-card"><h1>Join this book club</h1><p>This invite only adds your signed-in account to the private club tied to this link.</p><button className="primary" type="button" disabled={busy} onClick={join}>{busy?'Joining…':'Join club'}</button>{error&&<p className="error-text">{error}</p>}</section></div>
+  if(loading)return <div className="page join-page"><section className="join-card join-preview loading"><i/><i/><i/></section></div>;
+  if(!preview)return <div className="page join-page"><section className="join-card"><h1>This invite has expired.</h1><p>{error||'Ask someone in the club for a fresh link.'}</p><button className="secondary" onClick={()=>navigate('/clubs')}>Back to clubs</button></section></div>;
+  const members:any[]=preview.members||[],books:any[]=preview.choosing||[];
+  return <div className="page join-page"><section className="join-card join-preview">
+    <div className="join-private"><Users/> Private club · {preview.memberCount||members.length} members</div>
+    <h1>{preview.name}</h1>
+    <p className="join-lede">You were invited to read with this group.</p>
+    {members.length>0&&<div className="join-members">{members.map((m:any,i:number)=><span key={`${m.name}-${i}`}>{m.avatarUrl?<img src={m.avatarUrl} alt=""/>:<i>{String(m.name||'R').slice(0,1)}</i>}<b>{m.name}</b></span>)}</div>}
+    {books.length>0&&<div className="join-books"><small>Currently choosing</small><div>{books.map((x:any)=><BookCover key={x.id||x.title} title={x.title} author={x.author} src={x.coverUrl}/>)}</div></div>}
+    <button className="primary join-button" type="button" disabled={busy} onClick={join}>{busy?'Joining…':`Join ${preview.name}`} <ArrowRight/></button>
+    {error&&<FeedbackMessage kind="error">{error}</FeedbackMessage>}
+  </section></div>
 }

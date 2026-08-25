@@ -16,6 +16,7 @@ type Ctx = {
   refreshing: boolean;
   unreadNotifications: number;
   error?: string;
+  offline: boolean;
   refresh: () => Promise<void>;
   selectClub: (id: string) => Promise<void>;
   applyProfileStyle: (style: ProfileStyle) => void;
@@ -42,6 +43,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [refreshing, setRefreshing] = useState(false);
   const [unreadNotifications,setUnreadNotifications]=useState(0);
   const [error, setError] = useState<string>();
+  const [offline,setOffline]=useState(false);
   const activeRef = useRef<string | undefined>(undefined);
   const bootedRef = useRef(false);
 
@@ -58,10 +60,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (firstLoad) setLoading(true);
     else setRefreshing(true);
 
+    let authenticatedUser: User | null = null;
     try {
       const { data: { session }, error: sessionError } = await withTimeout(supabase.auth.getSession(), 6000);
       if (sessionError) throw sessionError;
       const u = session?.user ?? null;
+      authenticatedUser=u;
       setUser(u);
 
       if (!u) {
@@ -70,6 +74,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setId(undefined);
         setWorkspace(null);
         setError(undefined);
+        setOffline(false);
         return;
       }
 
@@ -91,12 +96,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         : c.activeClubId || c.clubs[0]?.id;
 
       setId(id);
-      setWorkspace(id ? await withTimeout(getWorkspace(id, u.id)) : null);
+      const nextWorkspace=id ? await withTimeout(getWorkspace(id, u.id)) : null;
+      // getMyClubs is also the dev fallback that guarantees a useful Race/Sailing mix
+      // before migration 011 is applied. Keep the active workspace on that same assignment.
+      if(nextWorkspace&&id){
+        const assignedScene=c.clubs.find(club=>club.id===id)?.progressScene;
+        if(assignedScene)nextWorkspace.club.progressScene=assignedScene;
+      }
+      setWorkspace(nextWorkspace);
+      try{localStorage.setItem('bookclub:workspace-cache',JSON.stringify({userId:u.id,profile:effectiveProfile,clubs:c.clubs,activeClubId:id,workspace:nextWorkspace,unread}))}catch{}
       setError(undefined);
+      setOffline(false);
     } catch (e: any) {
       console.error('BOOK CLUB refresh failed', e);
       void captureClientError(e,{area:'app-refresh'});
-      setError(e?.message || 'Could not load BOOK CLUB');
+      let recovered=false;
+      if(authenticatedUser){
+        try{
+          const cached=JSON.parse(localStorage.getItem('bookclub:workspace-cache')||'null');
+          if(cached?.userId===authenticatedUser.id){
+            setProfile(cached.profile||null);setClubs(cached.clubs||[]);setId(cached.activeClubId);setWorkspace(cached.workspace||null);setUnreadNotifications(cached.unread||0);
+            setError(undefined);setOffline(true);recovered=true;
+          }
+        }catch{}
+      }
+      if(!recovered)setError(e?.message || 'Could not load BOOK CLUB');
     } finally {
       bootedRef.current = true;
       setLoading(false);
@@ -114,12 +138,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     activeRef.current = id;
     try {
       await withTimeout(persist(id), 8000);
-      if (user) setWorkspace(await withTimeout(getWorkspace(id, user.id)));
+      if (user) {
+        const nextWorkspace=await withTimeout(getWorkspace(id, user.id));
+        const assignedScene=clubs.find(club=>club.id===id)?.progressScene;
+        if(assignedScene)nextWorkspace.club.progressScene=assignedScene;
+        setWorkspace(nextWorkspace);
+      }
     } catch (e: any) {
       setError(e?.message || 'Could not open that club');
       throw e;
     }
-  }, [user]);
+  }, [user,clubs]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -147,9 +176,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reactions' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'meeting_rsvps' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'meetings' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'meeting_options' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'meeting_option_responses' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'club_books' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'book_ratings' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ballots' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ballot_preferences' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter:`user_id=eq.${user.id}` }, async()=>{setUnreadNotifications(await getUnreadNotificationCount(user.id))})
       .subscribe();
     return () => {
@@ -159,8 +191,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [activeClubId, user?.id, refresh]);
 
   const value = useMemo(() => ({
-    user, profile, clubs, activeClubId, workspace, loading, refreshing, unreadNotifications, error, refresh, selectClub, applyProfileStyle
-  }), [user, profile, clubs, activeClubId, workspace, loading, refreshing, unreadNotifications, error, refresh, selectClub, applyProfileStyle]);
+    user, profile, clubs, activeClubId, workspace, loading, refreshing, unreadNotifications, error, offline, refresh, selectClub, applyProfileStyle
+  }), [user, profile, clubs, activeClubId, workspace, loading, refreshing, unreadNotifications, error, offline, refresh, selectClub, applyProfileStyle]);
 
   return <C.Provider value={value}>{children}</C.Provider>;
 }

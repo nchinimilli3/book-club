@@ -1,48 +1,57 @@
 # BOOK CLUB
 
-A private, multi-club reading app for real friend groups. The production loop is:
+A private reading space for friend groups: choose a book, vote without social pressure, read at different speeds without spoilers, meet, remember what everyone thought, and pick the next one.
 
-`create/join → ideas → vote → acquire → read → discuss → meet → rate/archive → repeat`
+## Product loop
 
-The frontend is React/Vite, private product data lives in Supabase with RLS, and server-only integrations run through a Cloudflare Worker.
+`join/create → suggest → vote → get the book → read → discuss → meet → rate → shelf → repeat`
 
-## Start locally
+The frontend is React + TypeScript + Vite. Private product data lives in Supabase with RLS. Server-only AI and Google Calendar integrations run through the Cloudflare Worker in `worker/`.
+
+## Local setup
 
 ```bash
-npm install
+npm ci
 cp .env.example .env.local
 npm run dev
 ```
 
-Use only the Supabase publishable client key in the frontend. Never commit service-role or provider secrets.
+Frontend environment variables:
 
-## Existing Supabase project
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `VITE_API_BASE_URL`
 
-`supabase/migrations/009_FINAL_RELEASE.sql` is the release migration for the current project. Older migration files are retained under `supabase/legacy/` for history only.
+Do not put service-role, OpenAI, Google OAuth, or other provider secrets in `VITE_*` variables.
 
-Run 009 once and require every row from its final `book_club_release_check()` output to be `PASS` before production launch.
+For local Worker development, copy `worker/.dev.vars.example` to `worker/.dev.vars` and fill the required values there.
 
-The canonical runtime contract is documented in `supabase/SCHEMA_CONTRACT.md`.
+## Database
 
-## Cloudflare Worker
+For the existing BOOK CLUB Supabase project, run:
 
-Deploy `worker/` separately and configure `VITE_API_BASE_URL` in the frontend. The Worker owns:
+`supabase/migrations/009_FINAL_RELEASE.sql`
 
-- source-backed AI book decision guides
-- Reader's Companion enrichment
-- club taste recommendations
-- Google Calendar OAuth and event synchronization
-- protected use of service-role/provider credentials
+Then run the migration's final `book_club_release_check()` output and require every row to be `PASS`.
 
-Core club reading flows do not depend on AI being available.
+`supabase/reference/BASE_SCHEMA_REFERENCE.sql` is retained only as a reference for the already-applied base schema. Do not re-run it against an existing production database.
 
-## Quality gates
+The canonical runtime contract is `supabase/SCHEMA_CONTRACT.md`.
+
+## Release gates
 
 ```bash
 npm run test:release
 npm run build
 ```
 
-`test:release` checks TypeScript, runtime invariants, routes/buttons, RPC contracts, sticker assets, schema-contract coverage and Worker syntax.
+`test:release` checks TypeScript, routes/actions, RPC wiring, sticker references, schema-contract coverage, and Worker syntax. Before launch, also complete the live multi-account privacy/lifecycle checks in `PRODUCTION_RELEASE_CHECKLIST.md`.
 
-A production launch still requires the live multi-account RLS/lifecycle test in `PRODUCTION_RELEASE_CHECKLIST.md`.
+## Book discovery
+Search has a browse state before typing: live NYT Best Sellers plus Apple Books catalog discovery. Set the NYT key only on the Worker (`wrangler secret put NYT_BOOKS_API_KEY`); never expose it in Vite. Apple Books discovery uses Apple's public iTunes Search API and is cached by the Worker. If the NYT secret is missing, the Apple rail still works and Search shows a quiet setup note rather than failing.
+
+## Quick Add passage scanning
+
+On mobile, **Quick add** opens the rear camera so a reader can photograph a passage and save the transcription directly to the active book discussion. The browser downsizes the photo before upload; the Cloudflare Worker sends it to the configured OpenAI vision model at high detail, returns exact text plus any visible chapter/page metadata, and the original photo is not stored in Supabase.
+
+This uses the existing server-side `OPENAI_API_KEY`. `OPENAI_VISION_MODEL` is optional and falls back to `OPENAI_MODEL` (then `gpt-5.6`). Keep both values on the Worker, never in `VITE_*` variables.

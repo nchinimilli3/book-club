@@ -1,4 +1,4 @@
-import {createContext,useContext,useEffect,useMemo,useState} from 'react';
+import {createContext,useContext,useEffect,useState} from 'react';
 type Router={path:string;navigate:(to:string,replace?:boolean)=>void};const C=createContext<Router|null>(null);
 export function RouterProvider({children}:{children:React.ReactNode}){const[path,setPath]=useState(location.pathname);useEffect(()=>{const f=()=>setPath(location.pathname);addEventListener('popstate',f);return()=>removeEventListener('popstate',f)},[]);const navigate=(to:string,replace=false)=>{if(replace)history.replaceState({},'',to);else history.pushState({},'',to);setPath(to)};return <C.Provider value={{path,navigate}}>{children}</C.Provider>}
 export const useRouter=()=>{const x=useContext(C);if(!x)throw new Error('Missing router');return x};

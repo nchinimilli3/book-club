@@ -1,16 +1,18 @@
 export type Tone = 'rose'|'olive'|'gold'|'plum'|'blue'|'clay';
+export type ProgressScene = 'race'|'sailing';
 export type Phase = 'setup'|'choosing'|'acquiring'|'reading'|'planning_meeting'|'meeting'|'rating'|'archived'|'paused';
 export type PlacedSticker = { id:string; key:string; x:number; y:number; r:number; s:number; z:number };
 export type ProfileStyle = { palette?:'paper'|'rose'|'olive'|'gold'|'plum'|'blue'; layout?:'editorial'|'scrapbook'|'clean'; note?:string; stickers?:PlacedSticker[] };
 export type Profile = { id:string; displayName:string; username?:string; avatarUrl?:string; style?:ProfileStyle };
 export type Book = { id:string; title:string; author:string; coverUrl?:string; description?:string; pages?:number; year?:number; isbn?:string };
-export type Club = { id:string; name:string; ownerId:string; tone:Tone; phase:Phase; inviteCode?:string; coverImageUrl?:string; memberCount:number };
-export type Member = Profile & { role:string; chapter?:number; status?:string };
+export type Club = { id:string; name:string; ownerId:string; tone:Tone; phase:Phase; inviteCode?:string; coverImageUrl?:string; memberCount:number; progressScene?:ProgressScene };
+export type Member = Profile & { role:string; chapter?:number; page?:number; percent?:number; status?:string; format?:string };
 export type ClubBook = { id:string; clubId:string; book:Book; status:string; startDate?:string; targetFinishDate?:string; totalChapters?:number; totalPages?:number; suggestedBy?:Profile };
 export type Meeting = { id:string; startsAt:string; meetingType?:string; meetingUrl?:string; response?:'going'|'maybe'|'cant'; status?:string };
+export type MeetingOption = { id:string; startsAt:string; availableCount:number; myAvailable:boolean };
 export type Reply = { id:string; postId:string; userId:string; body:string; createdAt:string; author?:Profile };
 export type Reaction = { id?:string; postId:string; userId:string; reaction:string; createdAt?:string };
-export type Thought = { id:string; userId:string; body:string; type:string; chapter?:number; createdAt:string; author?:Profile; reactions?:Reaction[]; replyItems?:Reply[]; savedForMeeting?:boolean };
+export type Thought = { id:string; userId:string; body:string; type:string; chapter?:number; createdAt:string; author?:Profile; reactions?:Reaction[]; replyItems?:Reply[]; savedForMeeting?:boolean; predictionRevealed?:boolean };
 export type Checkpoint = { id:string; dueAt:string; targetChapter?:number; targetPage?:number; label?:string };
 export type MarginItem = { id:string; kind:'note'|'quote'; body:string; note?:string; chapter?:number; page?:number; createdAt:string };
 export type ClubRating = { rating:number; review?:string; recommend?:boolean };
@@ -21,6 +23,7 @@ export type Workspace = {
   currentBook?:ClubBook;
   ideaBooks:ClubBook[];
   meeting?:Meeting;
+  meetingOptions:MeetingOption[];
   thoughts:Thought[];
   checkpoints:Checkpoint[];
   acquired:number;
@@ -31,4 +34,4 @@ export type Workspace = {
   meetingQuestions:MeetingQuestion[];
 };
 
-export type AppNotification = { id:string; clubId?:string; type:string; title:string; body?:string; deepLink?:string; readAt?:string; createdAt:string };
+export type AppNotification = { id:string; clubId?:string; type:string; title:string; body?:string; deepLink?:string; readAt?:string; createdAt:string; bookCoverUrl?:string };
