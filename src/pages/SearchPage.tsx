@@ -7,7 +7,7 @@ import { BookAddMenu, type BookAddTarget } from '../components/BookAddMenu';
 import { FeedbackMessage, PageState } from '../components/PageState';
 import { SelectMenu } from '../components/SelectMenu';
 import { buildLocalDecisionGuide, getBookDecisionDetails, searchBooks, type BookDecisionDetails, type BookSearchResult } from '../lib/books';
-import { getBookDiscovery, getDecisionGuide, type DecisionGuide, type DiscoveryBook } from '../lib/api';
+import { getBookDiscovery, getDecisionGuide, type BookDiscoveryResponse, type DecisionGuide } from '../lib/api';
 import { catalogToSearchResult, discoveryToCatalog, type CatalogBook } from '../lib/catalog';
 import { saveBookToClub, savePersonalBook } from '../lib/data';
 import { useApp } from '../lib/AppContext';
@@ -33,7 +33,7 @@ export function SearchPage(){
   const[busy,setBusy]=useState<'club'|'personal'|'quick'|null>(null),[notice,setNotice]=useState('');
   const[personalShelf,setPersonalShelf]=useState('want_to_read'),[favorite,setFavorite]=useState(false),[profileReturn,setProfileReturn]=useState(false);
   const[quickAdd,setQuickAdd]=useState<BookSearchResult|null>(null);
-  const[discovery,setDiscovery]=useState<{nyt:DiscoveryBook[];apple:DiscoveryBook[];nytConfigured:boolean}>({nyt:[],apple:[],nytConfigured:false}),[discoveryLoading,setDiscoveryLoading]=useState(true);
+  const[discovery,setDiscovery]=useState<BookDiscoveryResponse>({nyt:[],apple:[],nytConfigured:false,nytStatus:'not_configured',apiReachable:true}),[discoveryLoading,setDiscoveryLoading]=useState(true);
   const[returnTarget,setReturnTarget]=useState<ReturnTarget|null>(null);
   const pushedRef=useRef(false);
 
@@ -111,9 +111,9 @@ export function SearchPage(){
 
   return <div className="page search-page"><header className="page-title search-title"><h1>Find a book</h1>{returnTarget&&<button type="button" className="search-exit" onClick={exitSearch} aria-label={`Close search and return to ${returnTarget.label||'previous page'}`}><X/></button>}</header><div className="search-field"><Search/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Title, author, ISBN" autoFocus/>{q&&<button type="button" onClick={()=>setQ('')} aria-label="Clear search"><X/></button>}</div>{notice&&<FeedbackMessage className="search-notice">{notice}</FeedbackMessage>}
     {!q.trim()?<div className="search-discovery">
-      <BookRail title="NYT Best Sellers" books={nytBooks} loading={discoveryLoading} meta={b=>b.rank?`#${b.rank} · ${b.listName||'Best Sellers'}`:(b.listName||'Best Sellers')} onOpen={openCatalogBook} onAdd={addCatalogBook} renderOverlay={book=>quickAdd?.key===book.key?<BookAddMenu title={book.title} clubName={a.workspace?.club.name} showClub={!!a.activeClubId} busy={busy==='quick'} onClose={()=>setQuickAdd(null)} onChoose={target=>chooseQuickTarget(catalogToSearchResult(book),target)}/>:null} emptyMessage={discovery.nytConfigured?'Best Sellers are unavailable right now.':'Best Sellers will appear once NYT is connected.'}/>
+      <BookRail title="NYT Best Sellers" books={nytBooks} loading={discoveryLoading} meta={b=>b.rank?`#${b.rank} · ${b.listName||'Best Sellers'}`:(b.listName||'Best Sellers')} onOpen={openCatalogBook} onAdd={addCatalogBook} renderOverlay={book=>quickAdd?.key===book.key?<BookAddMenu title={book.title} clubName={a.workspace?.club.name} showClub={!!a.activeClubId} busy={busy==='quick'} onClose={()=>setQuickAdd(null)} onChoose={target=>chooseQuickTarget(catalogToSearchResult(book),target)}/>:null} emptyMessage={!discovery.apiReachable?'The deployed site cannot reach the Book Club API.':!discovery.nytConfigured?'The NYT key is not available on the API Worker.':discovery.nytStatus==='error'?'NYT is connected, but its request was rejected.':'Best Sellers are unavailable right now.'}/>
       <BookRail title="Explore Apple Books" books={appleBooks} loading={discoveryLoading} onOpen={openCatalogBook} onAdd={addCatalogBook} renderOverlay={book=>quickAdd?.key===book.key?<BookAddMenu title={book.title} clubName={a.workspace?.club.name} showClub={!!a.activeClubId} busy={busy==='quick'} onClose={()=>setQuickAdd(null)} onChoose={target=>chooseQuickTarget(catalogToSearchResult(book),target)}/>:null} emptyMessage="Apple Books discovery is unavailable right now."/>
-      {!discovery.nytConfigured&&<p className="discovery-config-note">NYT Best Sellers is ready for a Worker API key.</p>}
+      {!discovery.apiReachable?<p className="discovery-config-note discovery-config-error">API connection failed: {discovery.nytError||'the Pages app could not reach book-club-api.'}</p>:discovery.nytStatus==='error'?<p className="discovery-config-note discovery-config-error">NYT Worker check failed: {discovery.nytError||'provider request failed.'}</p>:!discovery.nytConfigured?<p className="discovery-config-note">Add NYT_BOOKS_API_KEY to the book-club-api Worker and redeploy that Worker.</p>:null}
     </div>:loading?<BookSkeleton count={8}/>:q.trim().length>=2&&!results.length?<PageState title="No match yet." body="Try the title and author." compact/>:<div className="book-wall">{results.map(b=><article className="search-book-card" key={b.key}><button type="button" className="search-book-open" onClick={()=>openDetail(b)} aria-label={`Open ${b.title}`}><BookCover className="book-image" title={b.title} author={b.author} src={b.cover}/><b>{b.title}</b><small>{b.author}</small></button><button type="button" className="search-quick-add" aria-expanded={quickAdd?.key===b.key} aria-label={`Add ${b.title}`} onClick={()=>setQuickAdd(x=>x?.key===b.key?null:b)}><Plus/> Add</button>{quickAdd?.key===b.key&&<BookAddMenu title={b.title} clubName={a.workspace?.club.name} showClub={!!a.activeClubId} busy={busy==='quick'} onClose={()=>setQuickAdd(null)} onChoose={target=>chooseQuickTarget(b,target)}/>}</article>)}</div>}
   </div>
 }

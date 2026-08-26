@@ -16,11 +16,14 @@ Do not run `supabase/legacy/001_initial_outdated_do_not_run.sql`.
 
 ## 2. Frontend
 
-Cloudflare Pages / local frontend variables:
+Cloudflare Pages frontend variables:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY` (publishable client key only)
-- `VITE_API_BASE_URL` (the deployed Worker origin)
+
+Production API routing is same-origin. `functions/api/[[path]].ts` forwards `/api/*` to the separately deployed `book-club-api` Worker through the `BOOK_CLUB_API` service binding declared in the root `wrangler.toml`. **Do not put the NYT key in a `VITE_*` variable.**
+
+For local Vite development only, set `VITE_API_BASE_URL` to the local or deployed API Worker origin.
 
 Build command: `npm run build`  
 Output directory: `dist`
@@ -47,8 +50,9 @@ Worker secrets:
 Optional provider secrets:
 - `TMDB_BEARER_TOKEN`
 - `YOUTUBE_API_KEY`
+- `NYT_BOOKS_API_KEY` (required for the NYT Best Sellers rail)
 
-The release contains working Google Calendar OAuth/sync code and server-side AI enrichment/recommendation code. Those integrations become active only after their provider credentials are configured.
+The release contains working Google Calendar OAuth/sync code, server-side AI enrichment/recommendation code, and NYT Books discovery. Those integrations become active only after their provider credentials are configured. After adding or changing a Worker secret, redeploy `worker/`. After adding or changing the Pages service binding, redeploy the Pages project.
 
 ## 4. Release tests
 

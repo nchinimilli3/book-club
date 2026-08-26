@@ -123,6 +123,57 @@ export async function getBookDecisionDetails(book:BookSearchResult):Promise<Book
   return {...book,subjects:book.subjects||[]};
 }
 
+
+export async function findBestBookCover(book:{title:string;author:string;isbn?:string}):Promise<string|undefined>{
+  const title=book.title.trim(),author=book.author.trim();
+  const norm=(v:string)=>v.toLowerCase().normalize('NFKD').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+  const titleKey=norm(title),authorKey=norm(author);
+  const googleCover=(links:any)=>{
+    const raw=links?.extraLarge||links?.large||links?.medium||links?.small||links?.thumbnail||links?.smallThumbnail;
+    return raw?String(raw).replace('http://','https://').replace('&zoom=1','&zoom=2'):undefined;
+  };
+  try{
+    const params=new URLSearchParams({limit:'12',fields:'title,author_name,cover_i,isbn'});
+    if(book.isbn)params.set('isbn',book.isbn);else{params.set('title',title);params.set('author',author)}
+    const r=await fetch(`https://openlibrary.org/search.json?${params}`);
+    if(r.ok){
+      const data=await r.json();
+      const ranked=(data.docs||[]).filter((d:any)=>d.cover_i).map((d:any)=>{
+        const dt=norm(String(d.title||'')),da=norm(String(d.author_name?.[0]||''));
+        let score=0;if(dt===titleKey)score+=100;else if(dt.includes(titleKey)||titleKey.includes(dt))score+=55;if(authorKey&&da===authorKey)score+=45;else if(authorKey&&(da.includes(authorKey)||authorKey.includes(da)))score+=25;return{d,score};
+      }).sort((a:any,b:any)=>b.score-a.score);
+      if(ranked[0]?.d?.cover_i)return `https://covers.openlibrary.org/b/id/${ranked[0].d.cover_i}-L.jpg`;
+    }
+  }catch{}
+  try{
+    const queries=[
+      book.isbn?`isbn:${book.isbn}`:'',
+      [`intitle:${title}`,author?`inauthor:${author}`:''].filter(Boolean).join(' '),
+      [title,author].filter(Boolean).join(' '),
+      `"${title}" ${author}`,
+    ].filter((q,i,a)=>q&&a.indexOf(q)===i);
+    for(const q of queries){
+      const r=await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=30&printType=books`);
+      if(!r.ok)continue;
+      const data=await r.json();
+      const ranked=(data.items||[]).map((item:any)=>{
+        const v=item.volumeInfo||{},dt=norm(String(v.title||'')),authors=(v.authors||[]).map(String),da=norm(authors.join(' '));
+        const ids=(v.industryIdentifiers||[]).map((x:any)=>String(x.identifier||'').replace(/[^0-9X]/gi,''));
+        let score=0;
+        if(book.isbn&&ids.includes(String(book.isbn).replace(/[^0-9X]/gi,'')))score+=160;
+        if(dt===titleKey)score+=120;else if(dt.includes(titleKey)||titleKey.includes(dt))score+=70;
+        if(authorKey&&da.includes(authorKey))score+=55;
+        if(v.pageCount)score+=4;
+        if(googleCover(v.imageLinks))score+=20;
+        return{v,score};
+      }).filter((x:any)=>googleCover(x.v.imageLinks)&&x.score>=60).sort((a:any,b:any)=>b.score-a.score);
+      const cover=googleCover(ranked[0]?.v?.imageLinks);
+      if(cover)return cover;
+    }
+  }catch{}
+  return undefined;
+}
+
 export async function getKnownChapterCount(book:{title:string;author:string;isbn?:string}):Promise<number|undefined>{
   try{
     const q=book.isbn?`isbn:${book.isbn}`:`title:${book.title} author:${book.author}`;

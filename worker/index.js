@@ -34,10 +34,10 @@ async function syncCalendarMeeting(env,userId,meetingId){const conn=await calend
 export default{async fetch(request,env){const url=new URL(request.url);if(request.method==='OPTIONS')return new Response(null,{headers:cors(request,env)});
   if(url.pathname==='/api/book-discovery'){
     const cacheHeaders={'cache-control':'public, max-age=1800, s-maxage=21600'};
-    const nyt=[];
+    const nyt=[],nytErrors=[];
     if(env.NYT_BOOKS_API_KEY){
       for(const list of ['hardcover-fiction','hardcover-nonfiction']){
-        try{const d=await fetchJson(`https://api.nytimes.com/svc/books/v3/lists/current/${list}.json?api-key=${env.NYT_BOOKS_API_KEY}`,{},9000);for(const b of (d?.results?.books||[]).slice(0,6))nyt.push({key:`nyt:${b.primary_isbn13||b.primary_isbn10||b.rank}`,source:'nyt',title:b.title,author:b.author,cover:b.book_image||'',isbn:b.primary_isbn13||b.primary_isbn10,rank:b.rank,weeksOnList:b.weeks_on_list,listName:d?.results?.display_name||'',storeUrl:b.amazon_product_url||''})}catch{}
+        try{const d=await fetchJson(`https://api.nytimes.com/svc/books/v3/lists/current/${list}.json?api-key=${env.NYT_BOOKS_API_KEY}`,{},9000);for(const b of (d?.results?.books||[]).slice(0,6))nyt.push({key:`nyt:${b.primary_isbn13||b.primary_isbn10||b.rank}`,source:'nyt',title:b.title,author:b.author,cover:b.book_image||'',isbn:b.primary_isbn13||b.primary_isbn10,rank:b.rank,weeksOnList:b.weeks_on_list,listName:d?.results?.display_name||'',storeUrl:b.amazon_product_url||''})}catch(e){nytErrors.push(String(e?.message||'NYT request failed').replace(/api-key=[^&\s]+/gi,'api-key=[redacted]').slice(0,180))}
       }
     }
     const apple=[];
@@ -45,9 +45,10 @@ export default{async fetch(request,env){const url=new URL(request.url);if(reques
     for(const term of terms){
       try{const d=await fetchJson(`https://itunes.apple.com/search?term=${encodeURIComponent(term)}&country=US&media=ebook&entity=ebook&limit=8&explicit=No`,{},9000);for(const b of (d?.results||[])){const title=b.trackName||b.collectionName;if(!title||apple.some(x=>x.title.toLowerCase()===String(title).toLowerCase()))continue;apple.push({key:`apple:${b.trackId||b.collectionId}`,source:'apple',title,author:b.artistName||'Unknown author',cover:String(b.artworkUrl100||'').replace('100x100','600x600'),year:Number(String(b.releaseDate||'').slice(0,4))||undefined,isbn:b.isbn13||undefined,subjects:b.genres||[],storeUrl:b.trackViewUrl||b.collectionViewUrl||''});if(apple.length>=12)break}}catch{}if(apple.length>=12)break
     }
-    return json({nyt:nyt.slice(0,10),apple:apple.slice(0,10),nytConfigured:Boolean(env.NYT_BOOKS_API_KEY)},200,request,env,cacheHeaders);
+    const nytConfigured=Boolean(env.NYT_BOOKS_API_KEY),nytStatus=!nytConfigured?'not_configured':nyt.length?'ok':'error';
+    return json({nyt:nyt.slice(0,10),apple:apple.slice(0,10),nytConfigured,nytStatus,nytError:nytStatus==='error'?(nytErrors[0]||'NYT returned no books.'):undefined},200,request,env,cacheHeaders);
   }
-  if(url.pathname==='/api/health')return json({ok:true,services:{openLibrary:true,wikipedia:true,ai:Boolean(env.OPENAI_API_KEY),calendarConfigured:calendarConfigured(env),tmdb:Boolean(env.TMDB_BEARER_TOKEN),youtube:Boolean(env.YOUTUBE_API_KEY),supabase:Boolean(env.SUPABASE_URL&&env.SUPABASE_ANON_KEY)}},200,request,env);
+  if(url.pathname==='/api/health')return json({ok:true,services:{openLibrary:true,wikipedia:true,nyt:Boolean(env.NYT_BOOKS_API_KEY),ai:Boolean(env.OPENAI_API_KEY),calendarConfigured:calendarConfigured(env),tmdb:Boolean(env.TMDB_BEARER_TOKEN),youtube:Boolean(env.YOUTUBE_API_KEY),supabase:Boolean(env.SUPABASE_URL&&env.SUPABASE_ANON_KEY)}},200,request,env);
   if(url.pathname==='/api/transcribe-passage'&&request.method==='POST'){
     const user=await authedUser(request,env);if(!user)return json({error:'Sign in required'},401,request,env);
     if(!env.OPENAI_API_KEY)return json({error:'Passage scanning is not configured yet.'},503,request,env);

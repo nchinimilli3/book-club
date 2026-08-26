@@ -79,13 +79,14 @@ function failMeetingSchema(error: any, fallback: string): never {
   }
   fail(error, fallback);
 }
+function profileAvatar(row:any){return row?.profile_style?.avatarUrl || row?.avatar_url || undefined}
 
 export async function getProfile(userId: string): Promise<Profile> {
   if (!supabase) return { id: userId, displayName: 'Reader' };
   const result = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
   if (result.error) fail(result.error, 'Could not load profile');
   const x: any = result.data;
-  return { id: userId, displayName: x?.display_name || 'Reader', username: x?.username || undefined, avatarUrl: x?.avatar_url || undefined, style: x?.profile_style || undefined };
+  return { id: userId, displayName: x?.display_name || 'Reader', username: x?.username || undefined, avatarUrl: profileAvatar(x), style: x?.profile_style || undefined };
 }
 
 export async function getMyClubs(userId: string) {
@@ -163,7 +164,7 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
     myAvailable:(x.meeting_option_responses||[]).some((r:any)=>r.user_id===userId&&r.available),
   }));
   const memberIds = memberRows.map((m:any)=>m.user_id).filter(Boolean);
-  const profileResult = memberIds.length ? await supabase.from('profiles').select('id,display_name,username,avatar_url').in('id', memberIds) : {data:[],error:null} as any;
+  const profileResult = memberIds.length ? await supabase.from('profiles').select('id,display_name,username,avatar_url,profile_style').in('id', memberIds) : {data:[],error:null} as any;
   if (profileResult.error) fail(profileResult.error, 'Could not load member profiles');
   const profileMap = new Map((profileResult.data || []).map((p:any)=>[p.id,p]));
   const active = clubBooks.find((r: any) => ['acquiring','reading','planning','planning_meeting','meeting','rating','up_next'].includes(r.status));
@@ -195,7 +196,7 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
     if (lockedResult.error) fail(lockedResult.error,'Could not load spoiler locks');
     if (meetingQuestionResult.error) fail(meetingQuestionResult.error,'Could not load meeting agenda');
     lockedPostCount=Number(lockedResult.data||0);
-    meetingQuestions=(meetingQuestionResult.data||[]).map((x:any)=>{const mp:any=profileMap.get(x.user_id);return{id:x.id,postId:x.post_id||undefined,body:x.body,createdAt:x.created_at,addedBy:mp?{id:x.user_id,displayName:mp.display_name||'Reader',username:mp.username||undefined,avatarUrl:mp.avatar_url||undefined}:undefined}});
+    meetingQuestions=(meetingQuestionResult.data||[]).map((x:any)=>{const mp:any=profileMap.get(x.user_id);return{id:x.id,postId:x.post_id||undefined,body:x.body,createdAt:x.created_at,addedBy:mp?{id:x.user_id,displayName:mp.display_name||'Reader',username:mp.username||undefined,avatarUrl:profileAvatar(mp)}:undefined}});
     if (ratingResult.data) myClubRating = { rating:Number((ratingResult.data as any).rating), review:(ratingResult.data as any).review || undefined, recommend:(ratingResult.data as any).recommend ?? undefined };
 
     const postRows:any[] = postResult.data || [];
@@ -225,9 +226,9 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
       chapter: p.spoiler_chapter ?? p.chapter ?? undefined,
       createdAt: p.created_at,
       predictionRevealed: Boolean(p.revealed_at) || !Boolean(p.locked),
-      author: profileMap.get(p.user_id) ? { id: p.user_id, displayName: (profileMap.get(p.user_id) as any).display_name || 'Reader', username: (profileMap.get(p.user_id) as any).username || undefined, avatarUrl: (profileMap.get(p.user_id) as any).avatar_url || undefined } : undefined,
+      author: profileMap.get(p.user_id) ? { id: p.user_id, displayName: (profileMap.get(p.user_id) as any).display_name || 'Reader', username: (profileMap.get(p.user_id) as any).username || undefined, avatarUrl: profileAvatar(profileMap.get(p.user_id)) } : undefined,
       reactions: reactionRows.filter((r:any)=>r.post_id===p.id).map((r:any)=>({ id:r.id,postId:r.post_id,userId:r.user_id,reaction:r.reaction,createdAt:r.created_at })),
-      replyItems: replyRows.filter((r:any)=>r.post_id===p.id).map((r:any)=>{const rp:any=profileMap.get(r.user_id);return { id:r.id,postId:r.post_id,userId:r.user_id,body:r.body,createdAt:r.created_at,author:rp?{id:r.user_id,displayName:rp.display_name||'Reader',username:rp.username||undefined,avatarUrl:rp.avatar_url||undefined}:undefined };}),
+      replyItems: replyRows.filter((r:any)=>r.post_id===p.id).map((r:any)=>{const rp:any=profileMap.get(r.user_id);return { id:r.id,postId:r.post_id,userId:r.user_id,body:r.body,createdAt:r.created_at,author:rp?{id:r.user_id,displayName:rp.display_name||'Reader',username:rp.username||undefined,avatarUrl:profileAvatar(rp)}:undefined };}),
     }));
     checkpoints = (checkpointResult.data || []).map((x: any) => ({ id: x.id, dueAt: x.due_at, targetChapter: x.target_chapter || undefined, targetPage: x.target_page || undefined, label: x.label || undefined }));
     memberProgressRows=progressResult.data||[];
@@ -236,7 +237,7 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
     acquired = (checkinResult.data || []).filter((x: any) => x.status === 'acquired').length;
   }
 
-  const members: Member[] = memberRows.map((m: any) => { const p:any=profileMap.get(m.user_id); const rp:any=memberProgressRows.find(x=>x.user_id===m.user_id); return { id: m.user_id, displayName: p?.display_name || 'Reader', username: p?.username || undefined, avatarUrl: p?.avatar_url || undefined, role: m.role, chapter:rp?.chapter||undefined, page:rp?.page||undefined, percent:rp?.percent!=null?Number(rp.percent):undefined, status:(rp?.status??rp?.participation_status)||undefined, format:rp?.format||undefined }; });
+  const members: Member[] = memberRows.map((m: any) => { const p:any=profileMap.get(m.user_id); const rp:any=memberProgressRows.find(x=>x.user_id===m.user_id); return { id: m.user_id, displayName: p?.display_name || 'Reader', username: p?.username || undefined, avatarUrl: profileAvatar(p), role: m.role, chapter:rp?.chapter||undefined, page:rp?.page||undefined, percent:rp?.percent!=null?Number(rp.percent):undefined, status:(rp?.status??rp?.participation_status)||undefined, format:rp?.format||undefined }; });
   const currentBook: ClubBook | undefined = active ? {
     id: active.id,
     clubId,
@@ -400,6 +401,13 @@ export async function getBookContext(bookId: string, chapter?: number) {
   const { data, error } = await q;
   if (error) fail(error, 'Could not load book context');
   return (data || []).map((x: any) => ({ ...x, kind: x.kind ?? x.type ?? 'context' }));
+}
+
+export async function repairBookCover(bookId:string,coverUrl:string){
+  if(!supabase||!bookId||!coverUrl)return false;
+  const result=await supabase.from('books').update({cover_url:coverUrl}).eq('id',bookId);
+  if(result.error)return false;
+  return true;
 }
 
 export async function getPersonalLibrary(userId: string) {
@@ -727,7 +735,7 @@ export async function getSharedMemberProfile(clubId:string,memberId:string){
   if(profileResult.error)fail(profileResult.error,'Could not load member profile');
   if(booksResult.error)fail(booksResult.error,'Could not load shared books');
   const p:any=profileResult.data;
-  return {profile:p?{id:p.id,displayName:p.display_name||'Reader',username:p.username||undefined,avatarUrl:p.avatar_url||undefined,style:p.profile_style||undefined}:null,books:(booksResult.data||[]).map((x:any)=>({id:x.id,shelf:x.shelf,rating:x.rating?Number(x.rating):undefined,dateFinished:x.date_finished||undefined,isFavorite:Boolean(x.is_favorite),book:bookFrom(x.books)}))};
+  return {profile:p?{id:p.id,displayName:p.display_name||'Reader',username:p.username||undefined,avatarUrl:profileAvatar(p),style:p.profile_style||undefined}:null,books:(booksResult.data||[]).map((x:any)=>({id:x.id,shelf:x.shelf,rating:x.rating?Number(x.rating):undefined,dateFinished:x.date_finished||undefined,isFavorite:Boolean(x.is_favorite),book:bookFrom(x.books)}))};
 }
 export async function leaveClub(clubId:string){
   if(!supabase)throw new Error('Supabase unavailable');
@@ -839,4 +847,3 @@ export async function importGoodreads(userId:string,file:File,onProgress?:(done:
   void trackEvent('goodreads_import_completed',{imported});
   return {...summary,imported};
 }
-

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Eye, EyeOff, Heart, Palette, Plus, Search, Settings, Star, Sticker as StickerIcon, Upload } from 'lucide-react';
 import { useRouter } from '../lib/router';
 import { useApp } from '../lib/AppContext';
-import { getPersonalLibrary, importGoodreads, previewGoodreadsImport, updatePersonalBook, updateProfileStyle, type GoodreadsImportPreview, type GoodreadsImportResult } from '../lib/data';
+import { getPersonalLibrary, importGoodreads, previewGoodreadsImport, repairBookCover, updatePersonalBook, updateProfileStyle, type GoodreadsImportPreview, type GoodreadsImportResult } from '../lib/data';
 import { Modal } from '../components/Modal';
 import { BookCover } from '../components/BookCover';
 import { SelectMenu } from '../components/SelectMenu';
@@ -11,6 +11,7 @@ import { StickerBoard, StickerTray } from '../components/StickerBoard';
 import { stickerDefaultScale } from '../lib/stickers';
 import { readProfileStyleCache, writeProfileStyleCache } from '../lib/profileStyleCache';
 import type { ProfileStyle } from '../lib/model';
+import { findBestBookCover } from '../lib/books';
 
 const YEAR=new Date().getFullYear();
 const defaultStyle:ProfileStyle={palette:'rose',layout:'scrapbook',note:'',stickers:[]};
@@ -39,6 +40,9 @@ export function ProfilePage(){
   const[syncError,setSyncError]=useState('');
   const[saving,setSaving]=useState(false);
   const[editorStatus,setEditorStatus]=useState('');
+  const[verifiedCovers,setVerifiedCovers]=useState<Set<string>>(()=>new Set());
+  const[failedCovers,setFailedCovers]=useState<Set<string>>(()=>new Set());
+  const coverRepairAttempts=useRef<Set<string>>(new Set());
 
   async function reload(){if(a.user)setItems(await getPersonalLibrary(a.user.id))}
   useEffect(()=>{void reload()},[a.user?.id]);
@@ -53,6 +57,19 @@ export function ProfilePage(){
     setStyle(a.profile?.style||defaultStyle);
   },[a.user?.id,a.profile?.style,stickering]);
   useEffect(()=>{if(stickering&&a.user)writeProfileStyleCache(a.user.id,style,true)},[style,stickering,a.user?.id]);
+  useEffect(()=>{
+    if(!a.user||stickering)return;
+    const userId=a.user.id,cached=readProfileStyleCache(userId);
+    if(!cached?.pending)return;
+    let cancelled=false;
+    const sync=async()=>{
+      if(cancelled||!navigator.onLine)return;
+      try{const persisted=await updateProfileStyle(userId,cached.style);if(cancelled)return;setStyle(persisted);a.applyProfileStyle(persisted);writeProfileStyleCache(userId,persisted,false);setSyncError('');setNotice('Sticker layout synced to the cloud.')}catch(err:any){if(!cancelled)setSyncError(err?.message||'Your sticker layout is saved here and will retry automatically.')}
+    };
+    const timer=window.setTimeout(()=>void sync(),900);
+    const onOnline=()=>void sync();window.addEventListener('online',onOnline);
+    return()=>{cancelled=true;window.clearTimeout(timer);window.removeEventListener('online',onOnline)};
+  },[a.user?.id,stickering]);
 
   const read=items.filter(x=>['read','finished'].includes(x.shelf));
   const want=items.filter(x=>['want_to_read','to-read'].includes(x.shelf));
@@ -61,8 +78,33 @@ export function ProfilePage(){
   const rated=read.filter(x=>x.rating);
   const avg=rated.length?(rated.reduce((s,x)=>s+(x.rating||0),0)/rated.length).toFixed(1):'—';
   const favorites=items.filter(x=>x.isFavorite);
+  const favoriteReads=useMemo(()=>[...favorites,...items.filter(x=>x.rating===5)].filter((x,i,list)=>list.findIndex(y=>y.book.id===x.book.id)===i),[favorites,items]);
   const collage=useMemo(()=>[...favorites,...current,...read,...want].filter((x,i,list)=>list.findIndex(y=>y.book.id===x.book.id)===i).slice(0,5),[items]);
   const hasGoodreads=items.some(x=>x.source==='goodreads');
+  function coverPriority(item:LibraryItem){if(verifiedCovers.has(item.id))return 3;if(item.book.coverUrl&&!failedCovers.has(item.id))return 2;return 1}
+  function shelfPreview(list:LibraryItem[],limit:number){return [...list].sort((x,y)=>coverPriority(y)-coverPriority(x)).slice(0,limit)}
+  async function recoverCover(item:LibraryItem,force=false){
+    if(!a.user||(!force&&coverRepairAttempts.current.has(item.id)))return;
+    coverRepairAttempts.current.add(item.id);
+    const cover=await findBestBookCover({title:item.book.title,author:item.book.author,isbn:item.book.isbn});
+    if(!cover)return;
+    await repairBookCover(item.book.id,cover);
+    setItems(old=>old.map(x=>x.id===item.id?{...x,book:{...x.book,coverUrl:cover}}:x));
+    setFailedCovers(old=>{const next=new Set(old);next.delete(item.id);return next});
+  }
+  useEffect(()=>{if(!a.user||!items.length)return;items.filter(x=>!x.book.coverUrl).slice(0,80).forEach(item=>void recoverCover(item))},[a.user?.id,items.length]);
+  useEffect(()=>{
+    if(!a.user||!items.length)return;
+    let cancelled=false;
+    const pending=items.filter(item=>item.book.coverUrl&&!verifiedCovers.has(item.id)&&!failedCovers.has(item.id)).slice(0,60);
+    pending.forEach(item=>{
+      const img=new Image();
+      img.onload=()=>{if(!cancelled)setVerifiedCovers(old=>new Set(old).add(item.id))};
+      img.onerror=()=>{if(cancelled)return;setFailedCovers(old=>new Set(old).add(item.id));void recoverCover(item,true)};
+      img.src=item.book.coverUrl!;
+    });
+    return()=>{cancelled=true};
+  },[a.user?.id,items,verifiedCovers,failedCovers]);
 
   function rememberSearchReturn(){sessionStorage.setItem(SEARCH_RETURN_KEY,JSON.stringify({path:'/me',label:'Profile',scrollY:window.scrollY}))}
 
@@ -77,6 +119,13 @@ export function ProfilePage(){
     sessionStorage.removeItem('bookclub:open-book');
     sessionStorage.setItem(PROFILE_TARGET_KEY,JSON.stringify({shelf,favorite}));
     nav('/search');
+  }
+
+  function setProfileImage(kind:'wallpaperUrl'|'avatarUrl',file?:File){
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=()=>setStyle(s=>({...s,[kind]:String(reader.result||'')}));
+    reader.readAsDataURL(file);
   }
 
 
@@ -132,10 +181,15 @@ export function ProfilePage(){
   }
 
   const palette=style.palette||'rose',layout=style.layout||'scrapbook';
+  const profileWallpaper=style.wallpaperUrl||(palette==='paper'?'/wallpapers/choice-mythology.webp':`/wallpapers/club-${palette}.webp`);
+  const profileAvatar=style.avatarUrl||a.profile?.avatarUrl;
   return <div className={`page profile-page profile-${palette} profile-layout-${layout}${stickering?' sticker-edit-mode':''}`}>
     <section className="profile-scrapbook-hero">
+      <img className="profile-wallpaper" src={profileWallpaper} alt="" aria-hidden="true"/>
+      <div className="profile-wallpaper-shade" aria-hidden="true"/>
       <div className="profile-identity">
         <p>Your profile</p>
+        {profileAvatar&&<img className="profile-custom-avatar" src={profileAvatar} alt="" aria-hidden="true"/>}
         <h1>{a.profile?.displayName||'Reader'}</h1>
         {style.note&&<blockquote>{style.note}</blockquote>}
         <div className="profile-hero-actions"><button type="button" className="secondary" onClick={()=>setCustomizeOpen(true)}><Palette/> Customize</button><button type="button" className="secondary" onClick={openStickerEditor}><StickerIcon/> Stickers</button><button type="button" className="icon-button" onClick={()=>nav('/me/settings')} aria-label="Settings"><Settings/></button></div>
@@ -158,12 +212,12 @@ export function ProfilePage(){
       <div className="year-facts"><article><span>5★ books</span><b>{year.filter(x=>x.rating===5).length}</b></article><article><span>Pages tracked</span><b>{year.reduce((sum,x)=>sum+(x.book.pages||0),0).toLocaleString()}</b></article><article><span>Most recent</span><b>{year[0]?.book.title||'—'}</b></article></div>
     </section>
 
-    <Shelf title="Favorites" items={favorites.slice(0,12)} empty="No favorites yet." onAdd={()=>findForProfile('want_to_read',true)} onOpen={openBook} onEdit={setEditItem}/>
-    {current.length>0&&<Shelf title="Currently reading" items={current.slice(0,12)} empty="" onAdd={()=>findForProfile('currently_reading')} onOpen={openBook} onEdit={setEditItem}/>}
-    <Shelf title="Books read" items={read.slice(0,18)} empty="No finished books yet." onAdd={()=>findForProfile('read')} onOpen={openBook} onEdit={setEditItem}/>
-    <Shelf title="Want to read" items={want.slice(0,18)} empty="Nothing saved yet." onAdd={()=>findForProfile('want_to_read')} onOpen={openBook} onEdit={setEditItem}/>
+    <Shelf title="Favorites & 5-star reads" items={shelfPreview(favoriteReads,favoriteReads.length)} total={favoriteReads.length} empty="No favorites or 5-star reads yet." onAdd={()=>findForProfile('want_to_read',true)} onOpen={openBook} onEdit={setEditItem}/>
+    {current.length>0&&<Shelf title="Currently reading" items={shelfPreview(current,current.length)} total={current.length} empty="" onAdd={()=>findForProfile('currently_reading')} onOpen={openBook} onEdit={setEditItem}/>}
+    <Shelf title="Books read" items={shelfPreview(read,read.length)} total={read.length} empty="No finished books yet." onAdd={()=>findForProfile('read')} onOpen={openBook} onEdit={setEditItem}/>
+    <Shelf title="Want to read" items={shelfPreview(want,want.length)} total={want.length} empty="Nothing saved yet." onAdd={()=>findForProfile('want_to_read')} onOpen={openBook} onEdit={setEditItem}/>
 
-    <section className="profile-library-actions"><div><h2>Add to your reading life</h2><p>Search one book, or bring over the shelves you already built elsewhere.</p></div><div className="profile-action-buttons"><button type="button" className="primary" onClick={()=>findForProfile('want_to_read')}><Search/> Search books <ArrowRight/></button><button type="button" className="secondary" onClick={openGoodreadsImport}><Upload/> {hasGoodreads?'Update from Goodreads':'Import from Goodreads'}</button></div></section>
+    <section className="profile-library-actions"><div className="profile-library-copy"><h2>Add to your reading life</h2><p>Search one book, or bring over the Goodreads shelves you already built.</p><div className="profile-action-buttons"><button type="button" className="primary" onClick={()=>findForProfile('want_to_read')}><Search/> Search books <ArrowRight/></button><button type="button" className="secondary" onClick={openGoodreadsImport}><Upload/> {hasGoodreads?'Update from Goodreads':'Import from Goodreads'}</button></div></div><div className="profile-library-graphic goodreads-import-graphic" aria-hidden="true"><span className="goodreads-poster-mark">G</span><b>Goodreads import</b><small>CSV shelves become your Book Club library</small></div></section>
 
     {(notice||syncError)&&<div className={`import-notice${syncError?' sync-warning':''}`} role="status"><span>{notice}{syncError&&<> <b>{syncError}</b></>}</span>{syncError&&<button type="button" className="secondary" disabled={saving} onClick={()=>void retryProfileStyleSync()}>{saving?'Syncing…':'Retry cloud sync'}</button>}</div>}
 
@@ -206,8 +260,8 @@ export function ProfilePage(){
 
     <Modal open={customizeOpen} onClose={()=>setCustomizeOpen(false)} title="Design your profile">
       <div className="profile-customizer">
-        <h3>Paper + color</h3><div className="palette-choices">{(['rose','olive','gold','plum','blue','paper'] as const).map(x=><button type="button" key={x} aria-label={`Use ${x} palette`} className={`palette-choice ${x} ${style.palette===x?'selected':''}`} onClick={()=>setStyle({...style,palette:x})}><i/><span>{x}</span></button>)}</div>
-        <h3>Layout</h3><div className="layout-choices">{(['scrapbook','editorial','clean'] as const).map(x=><button type="button" key={x} className={style.layout===x?'selected':''} onClick={()=>setStyle({...style,layout:x})}><b>{x[0].toUpperCase()+x.slice(1)}</b></button>)}</div>
+        <h3>Images</h3><div className="profile-image-controls"><label><span>Heading picture</span><b>Choose image</b><input type="file" accept="image/*" onChange={e=>setProfileImage('wallpaperUrl',e.target.files?.[0])}/></label><label><span>Profile picture</span><b>Choose image</b><input type="file" accept="image/*" onChange={e=>setProfileImage('avatarUrl',e.target.files?.[0])}/></label></div>
+        <h3>Wallpaper</h3><div className="palette-choices wallpaper-choices">{(['rose','olive','gold','plum','blue','paper'] as const).map(x=><button type="button" key={x} aria-label={`Use ${x} wallpaper`} className={`palette-choice ${x} ${style.palette===x?'selected':''}`} onClick={()=>setStyle({...style,palette:x,wallpaperUrl:undefined})}><i style={{backgroundImage:`url(${x==='paper'?'/wallpapers/choice-mythology.webp':`/wallpapers/club-${x}.webp`})`}}/><span>{x}</span></button>)}</div>
         <label>Profile note <span>optional</span><input maxLength={90} value={style.note||''} onChange={e=>setStyle({...style,note:e.target.value})}/></label>
         <div className="modal-actions"><button type="button" className="secondary" onClick={()=>setCustomizeOpen(false)}>Cancel</button><button type="button" className="primary" disabled={saving} onClick={saveStyle}>{saving?'Saving…':'Save design'}</button></div>
       </div>
@@ -215,8 +269,10 @@ export function ProfilePage(){
   </div>
 }
 
-function Shelf({title,items,empty,onAdd,onOpen,onEdit}:{title:string;items:LibraryItem[];empty:string;onAdd:()=>void;onOpen:(item:LibraryItem)=>void;onEdit:(item:LibraryItem)=>void}){
-  const shelfBooks=items.map(item=>({id:item.id,title:item.book.title,author:item.book.author,cover:item.book.coverUrl,width:124,height:190,tilt:0}));
-  const tone=title==='Favorites'?'plum':'blue';
-  return <section className={`profile-shelf acrylic-profile-shelf acrylic-${tone}`}><header><div><h2>{title}</h2><span>{items.length}</span></div><button type="button" className="shelf-add" onClick={onAdd}><Plus aria-hidden="true"/> Add</button></header>{items.length?<AcrylicBookshelf books={shelfBooks} width="100%" frontHeight={78} className={`profile-acrylic-object acrylic-${tone}`} onOpen={(_,i)=>onOpen(items[i])} onEdit={(_,i)=>onEdit(items[i])}/>:<div className="shelf-empty"><p>{empty}</p><button type="button" onClick={onAdd}>Find a book</button></div>}</section>
+function Shelf({title,items,total,empty,onAdd,onOpen,onEdit}:{title:string;items:LibraryItem[];total:number;empty:string;onAdd:()=>void;onOpen:(item:LibraryItem)=>void;onEdit:(item:LibraryItem)=>void}){
+  const[query,setQuery]=useState('');
+  const filtered=query.trim()?items.filter(item=>`${item.book.title} ${item.book.author}`.toLowerCase().includes(query.trim().toLowerCase())):items;
+  const shelfBooks=filtered.map(item=>({id:item.id,title:item.book.title,author:item.book.author,cover:item.book.coverUrl,width:124,height:190,tilt:0}));
+  const tone=title.includes('Favorites')?'plum':'blue';
+  return <section className={`profile-shelf acrylic-profile-shelf acrylic-${tone}`}><header><div><h2>{title}</h2><span>{total}</span></div><div className="shelf-header-tools">{total>8&&<label className="shelf-search"><Search/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={`Search ${title.toLowerCase()}`}/></label>}<button type="button" className="shelf-add" onClick={onAdd}><Plus aria-hidden="true"/> Add</button></div></header>{items.length?(filtered.length?<AcrylicBookshelf books={shelfBooks} width="100%" frontHeight={78} className={`profile-acrylic-object acrylic-${tone}`} onOpen={(_,i)=>onOpen(filtered[i])} onEdit={(_,i)=>onEdit(filtered[i])}/>:<div className="shelf-empty shelf-filter-empty"><p>No books match that search.</p><button type="button" onClick={()=>setQuery('')}>Clear search</button></div>):<div className="shelf-empty"><p>{empty}</p><button type="button" onClick={onAdd}>Find a book</button></div>}</section>
 }
