@@ -394,6 +394,15 @@ export async function updateProfileStyle(_userId: string, style: ProfileStyle): 
   return (data || style) as ProfileStyle;
 }
 
+export async function updateClubCoverImage(clubId: string, coverImageUrl?: string | null) {
+  if (!supabase) throw new Error('Supabase unavailable');
+  const result = await supabase
+    .from('clubs')
+    .update({ cover_image_url: coverImageUrl || null, updated_at: new Date().toISOString() })
+    .eq('id', clubId);
+  if (result.error) fail(result.error, 'Could not save club header image');
+}
+
 export async function getBookContext(bookId: string, chapter?: number) {
   if (!supabase) return [];
   let q = supabase.from('book_context_items').select('*,context_sources(*)').eq('book_id', bookId).order('created_at');

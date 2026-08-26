@@ -27,16 +27,18 @@ export function QuickPassageCapture(){
   const cameraRef=useRef<HTMLInputElement>(null),libraryRef=useRef<HTMLInputElement>(null);
   const[open,setOpen]=useState(false),[busy,setBusy]=useState(false),[saving,setSaving]=useState(false);
   const[result,setResult]=useState<PassageTranscription|null>(null),[error,setError]=useState(''),[saved,setSaved]=useState(false);
+  const[note,setNote]=useState('');
   if(!a.user||!w||!cb)return null;
   const b=cb.book,currentChapter=w.myProgress?.chapter||undefined;
 
-  function reset(){setResult(null);setError('');setBusy(false);setSaving(false);setSaved(false)}
+  function reset(){setResult(null);setError('');setBusy(false);setSaving(false);setSaved(false);setNote('')}
   function close(){setOpen(false);setTimeout(reset,180)}
   async function saveExtracted(next:PassageTranscription){
     if(!next.text.trim()||!a.user||!cb)return;setSaving(true);setError('');
     try{
       const chapter=next.chapterNumber||currentChapter;
-      await createThought(cb.id,a.user.id,next.text.trim(),chapter,'thought');
+      const body=note.trim()?`"${next.text.trim()}"\n\nWhy I saved it: ${note.trim()}`:next.text.trim();
+      await createThought(cb.id,a.user.id,body,chapter,'thought');
       await a.refresh();setSaved(true);setTimeout(close,900);
     }catch(err:any){setError(err?.message||'Could not save this passage.')}
     finally{setSaving(false)}
@@ -70,6 +72,10 @@ export function QuickPassageCapture(){
         {result&&!busy&&<div className="quick-passage-result">
           <div className="quick-passage-result-head"><div><span>{saved?'Saved to discussion':'Ready to discuss'}</span><b>{[result.chapterNumber?`Chapter ${result.chapterNumber}`:currentChapter?`Chapter ${currentChapter}`:null,result.pageNumber?`p. ${result.pageNumber}`:null].filter(Boolean).join(' · ')||'Passage'}</b></div>{result.needsReview&&<em>Photo was hard to read</em>}</div>
           {result.needsReview?<textarea aria-label="Extracted passage" value={result.text} onChange={e=>setResult({...result,text:e.target.value})}/>:<blockquote>{result.text}</blockquote>}
+          <label className="quick-passage-note">
+            <span>Why save this? <i>optional</i></span>
+            <textarea aria-label="Why save this passage" value={note} onChange={e=>setNote(e.target.value)} placeholder="Add a quick note so you remember why this part mattered."/>
+          </label>
           <div className="quick-passage-actions"><button type="button" className="quick-passage-retake" onClick={()=>{setResult(null);setError('');cameraRef.current?.click()}}><RotateCcw/> Retake</button><button type="button" className="quick-passage-save" onClick={save} disabled={saving||saved}>{saved?<><Check/> Saved</>:saving?<><LoaderCircle/> Saving…</>:<><MessageCircle/> Save for discussion</>}</button></div>
           {!result.needsReview&&!saved&&<small className="quick-passage-confidence">Text looks clear, so it saves automatically. You can still edit before it finishes saving.</small>}
           {!result.needsReview&&<button type="button" className="quick-passage-edit" onClick={()=>setResult({...result,needsReview:true})}>Edit transcription</button>}

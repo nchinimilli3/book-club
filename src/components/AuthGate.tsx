@@ -5,6 +5,17 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 type Mode = 'welcome' | 'signup' | 'signin' | 'forgot' | 'reset-password' | 'check-email';
 
+function GoogleMark() {
+  return (
+    <svg viewBox="0 0 18 18" aria-hidden="true">
+      <path fill="#EA4335" d="M9 7.36v3.48h4.84c-.21 1.12-.86 2.06-1.83 2.69l2.95 2.29c1.72-1.59 2.71-3.92 2.71-6.68 0-.63-.06-1.24-.16-1.82H9Z" />
+      <path fill="#4285F4" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.95-2.29c-.82.55-1.87.88-3.01.88-2.32 0-4.29-1.57-4.99-3.67H.96v2.36A8.99 8.99 0 0 0 9 18Z" />
+      <path fill="#FBBC05" d="M4.01 10.74A5.41 5.41 0 0 1 3.73 9c0-.61.1-1.2.28-1.74V4.9H.96A8.99 8.99 0 0 0 0 9c0 1.45.35 2.82.96 4.1l3.05-2.36Z" />
+      <path fill="#34A853" d="M9 3.58c1.32 0 2.5.45 3.44 1.33l2.58-2.58C13.46.89 11.42 0 9 0A8.99 8.99 0 0 0 .96 4.9l3.05 2.36C4.71 5.15 6.68 3.58 9 3.58Z" />
+    </svg>
+  );
+}
+
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [checking, setChecking] = useState(isSupabaseConfigured);
@@ -79,6 +90,20 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     if (signInError) setError(signInError.message);
   }
 
+  async function continueWithGoogle() {
+    if (!supabase) return;
+    setError('');
+    setLoading(true);
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}${window.location.pathname}` },
+    });
+    if (oauthError) {
+      setLoading(false);
+      setError(oauthError.message);
+    }
+  }
+
   async function sendResetLink(event: FormEvent) {
     event.preventDefault();
     if (!supabase) return;
@@ -127,14 +152,16 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
         {mode === 'welcome' && (
           <div className="auth-welcome">
-            <p className="auth-kicker">A private place for the books you read together.</p>
             <h1>Your book club,<br /><em>all in one place.</em></h1>
             <p className="auth-intro">Pick the next read, save the thoughts you have along the way, and actually make the FaceTime happen.</p>
             <div className="auth-actions">
               <button className="primary auth-primary" onClick={() => setMode('signup')}>Create an account</button>
+              <button className="auth-secondary oauth-button" onClick={() => void continueWithGoogle()} disabled={loading}>
+                <GoogleMark />
+                <span>Continue with Google</span>
+              </button>
               <button className="auth-secondary" onClick={() => setMode('signin')}>I already have an account</button>
             </div>
-            <p className="auth-privacy">Invite-only clubs. Nothing is publicly discoverable.</p>
           </div>
         )}
 
@@ -159,6 +186,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
             {error && <p className="auth-error">{error}</p>}
             <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Creating account…' : 'Create account'}</button>
+            <button type="button" className="auth-secondary oauth-button" onClick={() => void continueWithGoogle()} disabled={loading}>
+              <GoogleMark />
+              <span>Continue with Google</span>
+            </button>
             <button type="button" className="auth-inline-link" onClick={() => { setMode('signin'); setError(''); }}>Already have an account? Sign in</button>
           </form>
         )}
