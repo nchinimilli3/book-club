@@ -2,23 +2,86 @@ name = "book-club-api"
 main = "index.js"
 compatibility_date = "2026-08-01"
 
-# Configure non-secret production variables in Cloudflare:
-# APP_ORIGIN = "https://YOUR_APP.pages.dev"
-# SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
-# SUPABASE_ANON_KEY = "YOUR_PUBLISHABLE_KEY"
-# GOOGLE_REDIRECT_URI = "https://YOUR_WORKER.workers.dev/api/calendar/callback"
-# OPENAI_MODEL = "gpt-5.6"
-# OPENAI_VISION_MODEL = "gpt-5.6"  # optional override for Quick Add passage scanning
+[triggers]
+crons = ["*/15 * * * *"]
+
+# -------------------------------------------------------------------
+# BOOK CLUB Worker configuration
 #
-# Optional enrichment vars:
-# TMDB_BEARER_TOKEN = "..."  # prefer a secret if you consider this sensitive
-# YOUTUBE_API_KEY = "..."     # prefer a secret
+# Most of the values below are already stored as Worker secrets
+# through:
 #
-# Secrets (wrangler secret put NAME):
+#   npx wrangler secret put NAME
+#
+# Do NOT paste secret values directly into this file.
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# Non-secret production variables
+#
+# You can either:
+# 1. keep these as Worker secrets too, which is what you have already
+#    been doing, or
+# 2. uncomment [vars] and put non-sensitive values here.
+#
+# Since your existing Worker is already working with them as secrets,
+# you do NOT need to move them right now.
+# -------------------------------------------------------------------
+
+# [vars]
+#
+# APP_ORIGIN = "https://book-club-cog.pages.dev"
+# SUPABASE_URL = "https://srcggpqxhigqfxgvoskx.supabase.co"
+# GOOGLE_REDIRECT_URI = "https://book-club-api.postgradplans.workers.dev/api/calendar/callback"
+# OPENAI_MODEL = "YOUR_MODEL_NAME"
+
+# -------------------------------------------------------------------
+# Current Worker secrets
+#
+# These should be configured with:
+#
+#   npx wrangler secret put NAME
+#
+# -------------------------------------------------------------------
+
+# Core / Supabase
+# SUPABASE_ANON_KEY
 # SUPABASE_SERVICE_ROLE_KEY
+# SUPABASE_URL
+# APP_ORIGIN
+
+# NYT Books
+# NYT_BOOKS_API_KEY
+
+# Google Vision OCR
+# GOOGLE_VISION_API_KEY
+
+# OpenAI
 # OPENAI_API_KEY
+# OPENAI_MODEL
+
+# Google Calendar OAuth
 # GOOGLE_CLIENT_ID
 # GOOGLE_CLIENT_SECRET
+# GOOGLE_REDIRECT_URI
 # CALENDAR_STATE_SECRET
 # TOKEN_ENCRYPTION_KEY
-# NYT_BOOKS_API_KEY is a secret: wrangler secret put NYT_BOOKS_API_KEY
+
+# -------------------------------------------------------------------
+# Optional future enrichment
+# -------------------------------------------------------------------
+
+# TMDB_BEARER_TOKEN
+# YOUTUBE_API_KEY
+
+# -------------------------------------------------------------------
+# Cron
+#
+# Runs every 15 minutes.
+# The Worker scheduled() handler will use this to:
+#
+# - create upcoming meeting reminders
+# - create reading checkpoint reminders
+# - later send web push notifications
+#
+# -------------------------------------------------------------------
