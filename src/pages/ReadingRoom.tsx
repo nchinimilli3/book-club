@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { ArrowLeft, CalendarDays, Camera, FileText, Heart, LockKeyhole, MessageCircle, Minus, Plus, Quote, Search, Share2, StickyNote, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CalendarPlus, Camera, Check, ChevronRight, Clock3, Download, FileText, Heart, LockKeyhole, MessageCircle, Minus, Plus, Quote, Search, Share2, StickyNote, Trash2, Upload } from 'lucide-react';
 import { useRouter } from '../lib/router';
 import { useApp } from '../lib/AppContext';
-import { createReply, createThought, deleteMargin, getBookContext, getMargins, removeMeetingQuestion, saveMeetingOptions, saveMeetingQuestion, savePrivateNote, saveQuote, setMeetingOptionResponse, toggleReaction, updateProgress } from '../lib/data';
-import { getReaderContext, transcribePassage } from '../lib/api';
+import { createReply, createThought, deleteMargin, getBookContext, getMargins, removeMeetingQuestion, saveMeetingOptions, saveMeetingQuestion, savePrivateNote, saveQuote, setMeetingOptionResponse, submitMeetingPoll, toggleReaction, updateProgress } from '../lib/data';
+import { beginCalendarConnect, getCalendarStatus, getReaderContext, removeReadingPlanFromCalendar, syncReadingPlanToCalendar, transcribePassage } from '../lib/api';
 import { Modal } from '../components/Modal';
 import { BookCover } from '../components/BookCover';
 import { FeedbackMessage, PageState } from '../components/PageState';
@@ -11,83 +11,12 @@ import { DiscussionSkeleton } from '../components/Skeleton';
 import type { MarginItem } from '../lib/model';
 import { getKnownChapterCount } from '../lib/books';
 import { DateTimePicker } from '../components/DateTimePicker';
+import { formatMeetingDateTime } from '../lib/dateTime';
+import { checkpointLabel, checkpointMeetingInputs, checkpointPrepPrompts, checkpointProgressPercent, checkpointReadingMeta, coverAccent, daysRemainingLabel, daysUntilDate, googleCheckpointHref, imageToDataUrl, readingPlanIcsHref } from '../features/reading-room/readingRoomUtils';
 
 type Depth='short'|'medium'|'deep';
 type ComposerType='thought'|'question'|'prediction';
 type ReadingProgressMode='chapter'|'page';
-const MAX_CAPTURE_EDGE=1800;
-const CAPTURE_JPEG_QUALITY=.9;
-
-async function imageToDataUrl(file:File):Promise<string>{
-  if(!file.type.startsWith('image/'))throw new Error('Choose a photo of the page.');
-  const url=URL.createObjectURL(file);
-  try{
-    const img=await new Promise<HTMLImageElement>((resolve,reject)=>{const el=new Image();el.onload=()=>resolve(el);el.onerror=()=>reject(new Error('Could not read that image.'));el.src=url});
-    const scale=Math.min(1,MAX_CAPTURE_EDGE/Math.max(img.naturalWidth,img.naturalHeight));
-    const width=Math.max(1,Math.round(img.naturalWidth*scale)),height=Math.max(1,Math.round(img.naturalHeight*scale));
-    const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
-    const ctx=canvas.getContext('2d');if(!ctx)throw new Error('Could not prepare that image.');
-    ctx.drawImage(img,0,0,width,height);
-    return canvas.toDataURL('image/jpeg',CAPTURE_JPEG_QUALITY);
-  }finally{URL.revokeObjectURL(url)}
-}
-
-function coverAccent(src:string,seed:string):Promise<{accent:string;soft:string;rgb:string}>{
-  const fallback={accent:'#6f6652',soft:'#f1eadc',rgb:'111,102,82'};
-  if(!src)return Promise.resolve(fallback);
-  return new Promise(resolve=>{
-    const img=new Image();img.crossOrigin='anonymous';
-    img.onload=()=>{try{
-      const canvas=document.createElement('canvas');canvas.width=28;canvas.height=42;
-      const ctx=canvas.getContext('2d');if(!ctx)return resolve(fallback);
-      ctx.drawImage(img,0,0,canvas.width,canvas.height);
-      const data=ctx.getImageData(0,0,canvas.width,canvas.height).data;
-      const buckets=new Map<string,{r:number;g:number;b:number;n:number;sat:number}>();
-      for(let i=0;i<data.length;i+=16){
-        const r=data[i],g=data[i+1],b=data[i+2],a=data[i+3],max=Math.max(r,g,b),min=Math.min(r,g,b);
-        if(a<220||max>245&&min>226||max<28)continue;
-        const sat=max-min;if(sat<18&&max>180)continue;
-        const key=`${Math.round(r/32)}-${Math.round(g/32)}-${Math.round(b/32)}`;
-        const v=buckets.get(key)||{r:0,g:0,b:0,n:0,sat:0};v.r+=r;v.g+=g;v.b+=b;v.n++;v.sat+=sat;buckets.set(key,v);
-      }
-      const best=[...buckets.values()].sort((a,b)=>((b.n*(1+b.sat/Math.max(1,b.n)/70))-(a.n*(1+a.sat/Math.max(1,a.n)/70))))[0];
-      if(!best)return resolve(fallback);
-      const r=Math.round(best.r/best.n),g=Math.round(best.g/best.n),b=Math.round(best.b/best.n);
-      resolve({accent:`rgb(${r} ${g} ${b})`,soft:`rgba(${r}, ${g}, ${b}, .13)`,rgb:`${r},${g},${b}`});
-    }catch{resolve(fallback)}};
-    img.onerror=()=>resolve({...fallback,accent:`hsl(${Array.from(seed).reduce((n,c)=>(n*31+c.charCodeAt(0))>>>0,0)%360} 34% 34%)`});
-    img.src=src;
-  });
-}
-
-function localInput(iso?:string){
-  if(!iso)return '';
-  const d=new Date(iso);
-  return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);
-}
-
-function checkpointMeetingInputs(dueAt?:string){
-  if(!dueAt)return ['','',''];
-  const base=new Date(`${dueAt}T19:00:00`);
-  const option=(dayOffset:number,hour:number)=>{
-    const d=new Date(base);
-    d.setDate(base.getDate()+dayOffset);
-    d.setHours(hour,0,0,0);
-    return localInput(d.toISOString());
-  };
-  return [option(-1,19),option(0,19),option(1,14)];
-}
-
-function checkpointLabel(dueAt?:string){
-  if(!dueAt)return 'Checkpoint discussion';
-  return `Checkpoint on ${new Date(`${dueAt}T12:00`).toLocaleDateString('en-US',{month:'long',day:'numeric',weekday:'long'})}`;
-}
-
-function checkpointTime(seed:string){
-  return new Date(`${seed}T19:00:00`).getTime();
-}
-
-
 export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string}){
   const a=useApp(),{navigate:nav}=useRouter(),w=a.workspace;
   const[tab,setTab]=useState<'discussion'|'context'|'calendar'|'notes'|'characters'>(()=>{const key=`bookclub:reading-tab:${clubBookId}`;const saved=sessionStorage.getItem(key);sessionStorage.removeItem(key);return saved==='calendar'?'calendar':'discussion'});
@@ -95,6 +24,7 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
   const[context,setContext]=useState<any[]>([]);
   const[contextLoading,setContextLoading]=useState(false);
   const[contextError,setContextError]=useState('');
+  const[contextRetry,setContextRetry]=useState(0);
   const[note,setNote]=useState('');
   const[composerType,setComposerType]=useState<ComposerType>('thought');
   const[posting,setPosting]=useState(false);
@@ -103,12 +33,16 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
   const[replyBody,setReplyBody]=useState('');
   const[margins,setMargins]=useState<MarginItem[]>([]);
   const[marginType,setMarginType]=useState<'note'|'quote'|null>(null);
+  const[marginVisibility,setMarginVisibility]=useState<'private'|'club'>('private');
   const[marginBody,setMarginBody]=useState('');
   const[marginNote,setMarginNote]=useState('');
   const[marginPage,setMarginPage]=useState<number|undefined>();
   const[marginBusy,setMarginBusy]=useState(false);
   const[ocrBusy,setOcrBusy]=useState(false);
   const[notice,setNotice]=useState('');
+  const composerRef=useRef<HTMLTextAreaElement|null>(null);
+  useEffect(()=>{if(!notice)return;const timer=window.setTimeout(()=>setNotice(''),4000);return()=>window.clearTimeout(timer)},[notice]);
+  useEffect(()=>{if(tab!=='calendar'||!w)return;const key=`bookclub:reading-focus:${clubBookId}`;const target=sessionStorage.getItem(key);sessionStorage.removeItem(key);if(target)requestAnimationFrame(()=>document.getElementById(target)?.scrollIntoView({behavior:'smooth',block:'center'}));else window.scrollTo({top:0,behavior:'smooth'})},[tab,w,clubBookId]);
   const[referenceOpen,setReferenceOpen]=useState(false);
   const[referenceQuery,setReferenceQuery]=useState('');
   const[sharePending,setSharePending]=useState(false);
@@ -122,7 +56,11 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
   const[meetingVoteOpen,setMeetingVoteOpen]=useState(false);
   const[pollOptions,setPollOptions]=useState<string[]>([]);
   const[checkpointVoteLabel,setCheckpointVoteLabel]=useState('');
+  const[checkpointVoteId,setCheckpointVoteId]=useState<string|undefined>();
   const[voteBusy,setVoteBusy]=useState(false);
+  const[pendingCheckpointOptionIds,setPendingCheckpointOptionIds]=useState<Set<string>>(()=>new Set());
+  const[prepOpenId,setPrepOpenId]=useState<string|null>(null);
+  const[calendarConfigured,setCalendarConfigured]=useState(false),[calendarConnected,setCalendarConnected]=useState(false),[planCalendarBusy,setPlanCalendarBusy]=useState(false),[planCalendarSynced,setPlanCalendarSynced]=useState(false);
   const cb=w?.currentBook;
 
   if(!w||!cb||cb.id!==clubBookId)return <div className="page"><PageState kind="error" title="This reading room isn’t available." action={<button className="primary" onClick={()=>nav(clubId?`/clubs/${clubId}`:'/clubs')}>Back to club</button>}/></div>;
@@ -154,6 +92,8 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
     return()=>{cancelled=true};
   },[b.coverUrl,b.title,b.author]);
 
+  useEffect(()=>{let cancelled=false;void getCalendarStatus(currentBook.id).then(status=>{if(cancelled)return;setCalendarConfigured(Boolean(status.configured));setCalendarConnected(Boolean(status.connected));setPlanCalendarSynced(Boolean(status.planSynced))}).catch(()=>{if(!cancelled){setCalendarConfigured(false);setCalendarConnected(false)}});return()=>{cancelled=true}},[currentBook.id]);
+
   useEffect(()=>{
     let cancelled=false;
     setContextLoading(true);setContextError('');
@@ -162,13 +102,13 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
         const cached=await getBookContext(b.id,chapter);
         if(cancelled)return;
         if(cached.length){setContext(cached);return}
-        const generated=await getReaderContext({title:b.title,author:b.author,year:b.year,chapter});
+        const generated=await getReaderContext({bookId:b.id,title:b.title,author:b.author,year:b.year,chapter});
         if(!cancelled)setContext(generated);
       }catch(err:any){if(!cancelled)setContextError(err?.message||'Could not load context.')}
       finally{if(!cancelled)setContextLoading(false)}
     })();
     return()=>{cancelled=true};
-  },[b.id,b.title,b.author,b.year,chapter]);
+  },[b.id,b.title,b.author,b.year,chapter,contextRetry]);
 
   async function loadMargins(){if(a.user)try{setMargins(await getMargins(currentBook.id,a.user.id))}catch(err:any){setNotice(err?.message||'Could not load your margins.')}}
   useEffect(()=>{void loadMargins()},[currentBook.id,a.user?.id]);
@@ -176,11 +116,22 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
   useEffect(()=>{const key=`bookclub:draft:${currentBook.id}`;if(note)sessionStorage.setItem(key,note);else sessionStorage.removeItem(key)},[currentBook.id,note]);
 
   const chars=context.filter(x=>String(x.kind).toLowerCase().includes('character'));
-  const visible=w.thoughts.filter(t=>!t.chapter||t.chapter<=chapter);
+  // Keep other readers' future-chapter posts spoiler-safe, while always showing
+  // the current reader the posts they just created.
+  const visible=w.thoughts.filter(t=>!t.chapter||t.chapter<=chapter||t.userId===a.user?.id);
   const activeMeeting=w.meeting&&new Date(w.meeting.startsAt).getTime()+90*60*1000>Date.now()?w.meeting:null;
-  const nextMeetingOption=w.meetingOptions.find(x=>new Date(x.startsAt).getTime()>Date.now());
   const nextCheckpoint=w.checkpoints.find(c=>new Date(`${c.dueAt}T23:59:59`).getTime()>=Date.now())||w.checkpoints[0];
-  const meetingOptionsByCheckpoint=new Map(w.checkpoints.map(c=>[c.id,w.meetingOptions.filter(option=>Math.abs(new Date(option.startsAt).getTime()-checkpointTime(c.dueAt))<=36*60*60*1000)]));
+  const activeMeetingCheckpointId=activeMeeting?.checkpointId||null;
+  const meetingOptionsByCheckpoint=new Map(w.checkpoints.map(c=>[c.id,w.meetingOptions.filter(option=>option.checkpointId===c.id)]));
+  const autoSubmittedCheckpointRef=useRef<string|null>(null);
+  useEffect(()=>{
+    if(w.members.length!==1||activeMeeting)return;
+    const candidate=w.checkpoints.map(c=>({checkpoint:c,options:meetingOptionsByCheckpoint.get(c.id)||[]})).find(x=>x.options.some(option=>option.myAvailable));
+    if(!candidate||autoSubmittedCheckpointRef.current===candidate.checkpoint.id)return;
+    autoSubmittedCheckpointRef.current=candidate.checkpoint.id;
+    void submitCheckpointVote(candidate.checkpoint.id);
+  },[w.members.length,activeMeeting?.id,w.meetingOptions.length,w.checkpoints.length]);
+  const nextMeetingCheckpoint=w.checkpoints.find(c=>c.targetChapter?chapter<c.targetChapter:c.targetPage?(w.myProgress?.page||0)<c.targetPage:true)||w.checkpoints[0];
   const referenceMatches=referenceQuery.trim()?context.filter(x=>`${x.title||''} ${x.summary_short||''} ${x.summary_medium||''}`.toLowerCase().includes(referenceQuery.trim().toLowerCase())).slice(0,4):[];
   const nonCharacterContext=context.filter(x=>!String(x.kind).toLowerCase().includes('character'));
   const fallbackContext=[
@@ -189,6 +140,11 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
   ].filter(Boolean) as any[];
   const contextItems=nonCharacterContext.length?nonCharacterContext:fallbackContext;
   const hasDepthVariants=contextItems.some((x:any)=>{const short=String(x.summary_short||'').trim(),medium=String(x.summary_medium||'').trim(),deep=String(x.summary_deep||'').trim();return Boolean((medium&&medium!==short)||(deep&&deep!==medium&&deep!==short))});
+  const planIcsHref=readingPlanIcsHref({clubName:w.club.name,bookTitle:b.title,checkpoints:w.checkpoints,finishDate:currentBook.targetFinishDate,meeting:activeMeeting?{id:activeMeeting.id,startsAt:activeMeeting.startsAt,meetingUrl:activeMeeting.meetingUrl}:undefined});
+  const nextCheckpointGoogle=nextCheckpoint?googleCheckpointHref(`${b.title} · ${nextCheckpoint.targetChapter?`Through Chapter ${nextCheckpoint.targetChapter}`:nextCheckpoint.targetPage?`Through page ${nextCheckpoint.targetPage}`:'Reading checkpoint'}`,nextCheckpoint.dueAt,`${w.club.name} reading checkpoint`):'';
+
+  async function syncPlanCalendar(){setPlanCalendarBusy(true);setNotice('');try{await syncReadingPlanToCalendar(currentBook.id);setPlanCalendarSynced(true);setNotice('Reading plan synced to Google Calendar.')}catch(err:any){setNotice(err?.message||'Could not sync the reading plan.')}finally{setPlanCalendarBusy(false)}}
+  async function removePlanCalendar(){setPlanCalendarBusy(true);setNotice('');try{await removeReadingPlanFromCalendar(currentBook.id);setPlanCalendarSynced(false);setNotice('Reading plan removed from Google Calendar.')}catch(err:any){setNotice(err?.message||'Could not remove the reading plan from Google Calendar.')}finally{setPlanCalendarBusy(false)}}
 
   async function post(){
     if(!note.trim()||!a.user)return;
@@ -199,7 +155,34 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
   }
   async function reply(postId:string){if(!replyBody.trim())return;setPosting(true);setPostError('');try{await createReply(postId,replyBody);setReplyBody('');setReplyingTo(null);await a.refresh()}catch(err:any){setPostError(err?.message||'Could not post reply.')}finally{setPosting(false)}}
   async function react(postId:string){try{await toggleReaction(postId,'heart');await a.refresh()}catch(err:any){setPostError(err?.message||'Could not save reaction.')}}
-  async function saveMargin(){if(!marginType||!marginBody.trim())return;setMarginBusy(true);try{if(marginType==='note')await savePrivateNote(currentBook.id,marginBody,chapter||undefined,marginPage);else await saveQuote(currentBook.id,marginBody,marginNote,chapter||undefined,marginPage);setMarginType(null);setMarginBody('');setMarginNote('');setMarginPage(undefined);await loadMargins();setNotice(marginType==='note'?'Note saved privately.':'Quote saved to your margins.')}catch(err:any){setNotice(err?.message||'Could not save.')}finally{setMarginBusy(false)}}
+  function openMarginEditor(type:'note'|'quote'){
+    setMarginType(type);setMarginVisibility('private');setMarginBody('');setMarginNote('');setMarginPage(undefined);
+  }
+  function closeMarginEditor(){setMarginType(null);setMarginVisibility('private');setMarginBody('');setMarginNote('');setMarginPage(undefined)}
+  async function saveMargin(){
+    if(!marginType||!marginBody.trim()||!a.user)return;
+    const type=marginType,body=marginBody.trim(),noteText=marginNote.trim(),page=marginPage,visibility=marginVisibility,clubName=w?.club.name||'your club';
+    setMarginBusy(true);
+    try{
+      // A margin always remains the reader's private source copy. Sharing creates an
+      // explicit club-visible post; private tables are never exposed to other members.
+      if(type==='note')await savePrivateNote(currentBook.id,body,chapter||undefined,page);
+      else await saveQuote(currentBook.id,body,noteText,chapter||undefined,page);
+      if(visibility==='club'){
+        const pageSuffix=page?`\n\nPage ${page}`:'';
+        const sharedBody=type==='quote'
+          ? `${body}${noteText?`\n\n${noteText}`:''}${pageSuffix}`
+          : `${body}${pageSuffix}`;
+        await createThought(currentBook.id,a.user.id,sharedBody,chapter||undefined,type==='quote'?'quote':'thought');
+        await a.refresh();
+      }
+      closeMarginEditor();await loadMargins();
+      setNotice(visibility==='club'
+        ? `${type==='note'?'Note':'Quote'} saved to your margins and shared with ${clubName}.`
+        : `${type==='note'?'Note':'Quote'} saved privately.`);
+    }catch(err:any){setNotice(err?.message||'Could not save.')}
+    finally{setMarginBusy(false)}
+  }
   async function captureMarginFile(file?:File){
     if(!file)return;
     if(file.type.startsWith('text/')||file.name.toLowerCase().endsWith('.txt')){
@@ -228,10 +211,14 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
     }catch(err:any){setNotice(err?.message||'Could not update your progress.')}finally{setProgressBusy(false)}
   }
   async function toggleMeetingSave(postId:string,body:string,saved?:boolean){try{if(saved){const q=w!.meetingQuestions.find(x=>x.postId===postId);if(q)await removeMeetingQuestion(q.id);setNotice('Removed from the meeting agenda.')}else{await saveMeetingQuestion(currentBook.id,postId,body);setNotice('Saved for the meeting.')}await a.refresh()}catch(err:any){setNotice(err?.message||'Could not update the meeting agenda.')}}
-  async function startCheckpointMeetingVote(dueAt:string){
-    if(!canManage){setNotice('An owner or admin can open the meeting-time vote for this checkpoint.');return;}
-    setCheckpointVoteLabel(checkpointLabel(dueAt));
-    setPollOptions(checkpointMeetingInputs(dueAt));
+  function startCheckpointMeetingVote(checkpoint:{id:string;dueAt:string}){
+    if(!canManage){
+      setNotice('Only a club owner or admin can propose meeting times.');
+      return;
+    }
+    setCheckpointVoteId(checkpoint.id);
+    setCheckpointVoteLabel(checkpointLabel(checkpoint.dueAt));
+    setPollOptions(checkpointMeetingInputs(checkpoint.dueAt));
     setMeetingVoteOpen(true);
   }
   async function saveCheckpointVote(){
@@ -239,7 +226,7 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
     if(valid.length<2){setNotice('Add at least two meeting times.');return;}
     setVoteBusy(true);
     try{
-      await saveMeetingOptions(currentBook.clubId,currentBook.id,valid.map(x=>new Date(x).toISOString()));
+      await saveMeetingOptions(currentBook.clubId,currentBook.id,valid.map(x=>new Date(x).toISOString()),checkpointVoteId);
       await a.refresh();
       setMeetingVoteOpen(false);
       setNotice('Vote times are live for the group now.');
@@ -250,13 +237,27 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
     }
   }
   async function toggleCheckpointVote(optionId:string,available:boolean){
+    setPendingCheckpointOptionIds(prev=>new Set(prev).add(optionId));
     try{
       await setMeetingOptionResponse(optionId,available);
       await a.refresh();
       setNotice(available?'Your time vote was saved.':'Your time vote was removed.');
+      const checkpoint=Array.from(meetingOptionsByCheckpoint.values()).flat().filter(option=>option.id===optionId)[0];
+      const checkpointOptions=checkpoint?meetingOptionsByCheckpoint.get(checkpoint.checkpointId||'')||[]:[];
+      if(available&&checkpointOptions.length>0&&((w?.members.length||0)===1||checkpointOptions.every(option=>option.id===optionId||option.myAvailable))) await submitCheckpointVote(checkpoint.checkpointId||'');
     }catch(err:any){
       setNotice(err?.message||'Could not save your vote.');
-    }
+    }finally{setPendingCheckpointOptionIds(prev=>{const next=new Set(prev);next.delete(optionId);return next})}
+  }
+  async function submitCheckpointVote(checkpointId:string){
+    setVoteBusy(true);
+    try{
+      const confirmed:any=await submitMeetingPoll(checkpointId);
+      await a.refresh();
+      setNotice(confirmed?.starts_at?'Everyone has responded — the meeting is confirmed.':'Availability submitted. The meeting confirms automatically after everyone responds.');
+    }catch(err:any){
+      setNotice(err?.message||'Could not submit your availability.');
+    }finally{setVoteBusy(false)}
   }
   async function shareBook(){
     if(sharePendingRef.current)return;
@@ -277,10 +278,10 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
 
     {tab==='discussion'&&<section className="reading-section discussion-section"><header className="section-intro"><h2>Discussion</h2>{chapter>0&&<p>Through Chapter {chapter}</p>}</header>
       {w.lockedPostCount>0&&<button type="button" className="unlock-banner" onClick={()=>setProgressOpen(true)}><LockKeyhole/><span><b>{w.lockedPostCount} {w.lockedPostCount===1?'thought':'thoughts'} waiting for you</b></span></button>}
-      <div className="reading-quick-tools"><button type="button" onClick={()=>{setReferenceQuery('');setReferenceOpen(true)}}><Search/> Ask about the book</button>{w.meetingQuestions.length>0&&<button type="button" onClick={()=>nav(`/clubs/${w.club.id}/books/${currentBook.id}/meeting`)}><MessageCircle/> {w.meetingQuestions.length} saved for the meeting</button>}</div>
+      <div className="reading-quick-tools"><button type="button" onClick={()=>{setComposerType('question');requestAnimationFrame(()=>{composerRef.current?.focus();composerRef.current?.scrollIntoView({behavior:'smooth',block:'center'})})}}><Search/> Ask about the book</button>{w.meetingQuestions.length>0&&<button type="button" onClick={()=>nav(`/clubs/${w.club.id}/books/${currentBook.id}/meeting`)}><MessageCircle/> {w.meetingQuestions.length} saved for the meeting</button>}</div>
       <div className="composer-inline">
         <div className="composer-types">{(['thought','question','prediction'] as ComposerType[]).map(x=><button type="button" key={x} className={composerType===x?'active':''} onClick={()=>setComposerType(x)}>{x[0].toUpperCase()+x.slice(1)}</button>)}</div>
-        <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder={composerType==='prediction'?'Make a prediction…':composerType==='question'?'What are you wondering?':postChapter?`A thought from Chapter ${postChapter}`:'Add a thought…'}/>
+        <textarea ref={composerRef} value={note} onChange={e=>setNote(e.target.value)} placeholder={composerType==='prediction'?'Make a prediction…':composerType==='question'?'What are you wondering?':postChapter?`A thought from Chapter ${postChapter}`:'Add a thought…'}/>
         <div className="composer-footer"><label className="composer-location"><span>Post at</span><span className="composer-chapter-input">Chapter <input aria-label="Chapter for this post" type="number" min="1" max={effectiveTotalChapters||undefined} value={postChapter||''} placeholder="—" onChange={e=>setPostChapter(Number(e.target.value)||undefined)}/>{effectiveTotalChapters?<small>of {effectiveTotalChapters}</small>:null}</span></label><span className="composer-seal">{composerType==='prediction'?'Sealed until meeting':''}</span><button className="primary" onClick={post} disabled={posting||!note.trim()}>{posting?'Posting…':'Post'}</button></div>{postError&&<p className="error-text">{postError}</p>}
       </div>
       <div className="thought-stream">{visible.map(t=>{
@@ -292,11 +293,40 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
         </article>})}{!visible.length&&!posting&&<div className="context-empty"><MessageCircle/><h3>No thoughts yet.</h3></div>}</div>
     </section>}
 
-    {tab==='context'&&<section className="reading-section context-section"><header className="section-intro split"><div><p className="context-kicker">About the book</p><h2>Context</h2></div>{hasDepthVariants&&<div className="depth-switch">{(['short','medium','deep'] as Depth[]).map(d=><button type="button" aria-pressed={depth===d} className={depth===d?'active':''} onClick={()=>setDepth(d)} key={d}>{d==='short'?'30 sec':d==='medium'?'2 min':'Deep dive'}</button>)}</div>}</header><div className="context-list">{contextLoading?<DiscussionSkeleton/>:contextItems.length?contextItems.map((x:any,i)=><article key={x.id||`${x.kind}-${i}`}><span>{String(i+1).padStart(2,'0')}</span><div><small>{String(x.kind||'context').replaceAll('_',' ')}</small><h3>{x.title}</h3><p>{depth==='short'?x.summary_short:depth==='medium'?(x.summary_medium||x.summary_short):(x.summary_deep||x.summary_medium||x.summary_short)}</p>{x.context_sources?.length>0&&<details><summary>Sources</summary>{x.context_sources.map((s:any)=><a href={s.source_url} target="_blank" rel="noreferrer" key={s.source_url}>{s.source_name||'Source'}</a>)}</details>}</div></article>):<div className="context-empty context-empty-designed"><Search/><h3>Context is still being gathered.</h3><p>{contextError?'Source-backed context could not load right now.':'This section will fill with sourced background as it becomes available.'}</p></div>}</div></section>}
+    {tab==='context'&&<section className="reading-section context-section"><header className="section-intro split"><div><p className="context-kicker">About the book</p><h2>Context</h2></div>{hasDepthVariants&&<div className="depth-switch">{(['short','medium','deep'] as Depth[]).map(d=><button type="button" aria-pressed={depth===d} className={depth===d?'active':''} onClick={()=>setDepth(d)} key={d}>{d==='short'?'30 sec':d==='medium'?'2 min':'Deep dive'}</button>)}</div>}</header>{contextError&&!contextLoading&&<div className="context-generation-notice"><span>Reader Context could not refresh.</span><button type="button" className="text-link" onClick={()=>setContextRetry(x=>x+1)}>Try again</button></div>}<div className="context-list">{contextLoading?<DiscussionSkeleton/>:contextItems.length?contextItems.map((x:any,i)=><article key={x.id||`${x.kind}-${i}`}><span>{String(i+1).padStart(2,'0')}</span><div><small>{String(x.kind||'context').replaceAll('_',' ')}</small><h3>{x.title}</h3><p>{depth==='short'?x.summary_short:depth==='medium'?(x.summary_medium||x.summary_short):(x.summary_deep||x.summary_medium||x.summary_short)}</p>{x.context_sources?.length>0&&<details><summary>Sources</summary>{x.context_sources.map((s:any)=><a href={s.source_url} target="_blank" rel="noreferrer" key={s.source_url}>{s.source_name||'Source'}</a>)}</details>}</div></article>):<div className="context-empty context-empty-designed"><Search/><h3>Context is still being gathered.</h3><p>{contextError?'Source-backed context could not load right now.':'This section will fill with sourced background as it becomes available.'}</p></div>}</div></section>}
 
-    {tab==='calendar'&&<section className="reading-section calendar-section reading-plan-editorial"><header className="reading-plan-intro"><div><p>Reading plan</p><h2>{currentBook.targetFinishDate?`Finish by ${new Date(currentBook.targetFinishDate+'T12:00').toLocaleDateString('en-US',{month:'long',day:'numeric'})}`:'Set a finish target from the club home'}</h2></div><div className="reading-plan-progress"><strong>{Math.round(readingPct)}%</strong><span>{readingPlace}</span></div></header><div className="reading-plan-track" aria-label={`${Math.round(readingPct)} percent complete`}><i><em style={{width:`${readingPct}%`}}/><u style={{left:`${readingPct}%`}}/></i><div><span>Start</span><span>{currentBook.targetFinishDate?new Date(currentBook.targetFinishDate+'T12:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):'Finish'}</span></div></div>{w.checkpoints.length?<ol className="reading-plan-milestones">{w.checkpoints.map((c,i)=>{const done=c.targetChapter?chapter>=c.targetChapter:c.targetPage?(w.myProgress?.page||0)>=c.targetPage:false;const target=c.targetChapter?`Through Chapter ${c.targetChapter}`:c.targetPage?`Through page ${c.targetPage}`:'Reading checkpoint';const normalize=(v:string)=>v.toLowerCase().replace(/[^a-z0-9]/g,'');const label=String(c.label||'').trim();const repeatsTarget=label&&normalize(label)===normalize(target);const checkpointOptions=meetingOptionsByCheckpoint.get(c.id)||[];const liveOption=checkpointOptions.find(option=>new Date(option.startsAt).getTime()>Date.now());const meetingForCheckpoint=activeMeeting&&Math.abs(new Date(activeMeeting.startsAt).getTime()-checkpointTime(c.dueAt))<36*60*60*1000;return <li key={c.id} className={done?'complete':i===w.checkpoints.findIndex(cp=>cp.targetChapter?chapter<(cp.targetChapter||0):cp.targetPage?(w.myProgress?.page||0)>=0&&(w.myProgress?.page||0)<(cp.targetPage||0):false)?'current':''}><time>{new Date(c.dueAt+'T12:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</time><span><b>{label&&!repeatsTarget?label:target}</b>{label&&!repeatsTarget&&<small>{target}</small>}{meetingForCheckpoint&&<small className="checkpoint-meeting">FaceTime · {new Intl.DateTimeFormat('en-US',{weekday:'short',hour:'numeric',minute:'2-digit'}).format(new Date(activeMeeting!.startsAt))}</small>}{!meetingForCheckpoint&&checkpointOptions.length>0&&<small className="checkpoint-meeting">Tap a time to vote for yourself</small>}</span>{checkpointOptions.length? <div className="checkpoint-vote-row">{checkpointOptions.map(option=><button type="button" key={option.id} className={`checkpoint-option-button ${option.myAvailable?'selected':''}`} onClick={()=>void toggleCheckpointVote(option.id,!option.myAvailable)}><b>{new Intl.DateTimeFormat('en-US',{weekday:'short'}).format(new Date(option.startsAt))}</b><span>{new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date(option.startsAt))}</span></button>)}</div> : <button type="button" className="checkpoint-meeting-button" onClick={()=>void startCheckpointMeetingVote(c.dueAt)}>{liveOption?'Vote another time':'Vote time'}</button>}</li>})}</ol>:<div className="reading-plan-empty"><CalendarDays/><div><h3>{currentBook.targetFinishDate?'One finish line, no forced checkpoints.':'No plan yet.'}</h3><p>{currentBook.targetFinishDate?'Your club can keep this plan simple or add checkpoints later.':'Set a finish date from the club home when everyone is ready.'}</p></div></div>}{nextCheckpoint?<footer className="reading-plan-meeting"><span>{(meetingOptionsByCheckpoint.get(nextCheckpoint.id)||[]).length?'Next checkpoint vote':'Next checkpoint discussion'}</span><b>{(meetingOptionsByCheckpoint.get(nextCheckpoint.id)||[]).length?checkpointLabel(nextCheckpoint.dueAt).replace('Checkpoint on ',''):new Date(`${nextCheckpoint.dueAt}T19:00:00`).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</b></footer>:activeMeeting?<footer className="reading-plan-meeting"><span>Next book club discussion</span><b>{new Intl.DateTimeFormat('en-US',{weekday:'long',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date(activeMeeting.startsAt))}</b></footer>:null}</section>}
+    {tab==='calendar'&&<section className="reading-section calendar-section reading-plan-editorial">
+      <header className="reading-plan-intro"><div><h2>{currentBook.targetFinishDate?`Finish by ${new Date(currentBook.targetFinishDate+'T12:00').toLocaleDateString('en-US',{month:'long',day:'numeric'})}`:'Set a finish target from the club home'}</h2></div><div className="reading-plan-progress"><strong>{Math.round(readingPct)}%</strong><span>{readingPlace}</span></div></header>
+      <div className="reading-plan-track" aria-label={`${Math.round(readingPct)} percent complete`}><i><em style={{width:`${readingPct}%`}}/><u style={{left:`${readingPct}%`}}/>{w.checkpoints.map(c=>{const pct=checkpointProgressPercent(c,effectiveTotalChapters,totalPages);return pct==null?null:<button type="button" key={c.id} className="reading-plan-checkpoint-dot" style={{left:`${pct}%`} as CSSProperties} onClick={()=>document.getElementById(`checkpoint-${c.id}`)?.scrollIntoView({behavior:'smooth',block:'center'})} aria-label={`Jump to ${c.label||(c.targetChapter?`Chapter ${c.targetChapter}`:c.targetPage?`page ${c.targetPage}`:'checkpoint')} on ${new Date(c.dueAt+'T12:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}`}/>})}</i><div><span>Start</span><span>{currentBook.targetFinishDate?new Date(currentBook.targetFinishDate+'T12:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):'Finish'}</span></div></div>
+      <div className="reading-plan-tools"><div><span>Calendar</span><small>{calendarConnected?'Keep this reading plan in sync with your calendar.':'Connect once to add every checkpoint and the finish target.'}</small></div><div className="reading-plan-calendar-actions">{calendarConfigured&&(calendarConnected?<><button type="button" className={`reading-plan-calendar-primary ${planCalendarSynced?'synced':''}`} disabled={planCalendarBusy} onClick={()=>void syncPlanCalendar()}><CalendarPlus/> {planCalendarBusy?'Syncing…':planCalendarSynced?'Synced · sync again':'Sync reading plan'}</button><button type="button" className="reading-plan-remove-calendar" disabled={planCalendarBusy} onClick={()=>void removePlanCalendar()}>Remove</button></>:<button type="button" className="reading-plan-calendar-primary" onClick={()=>void beginCalendarConnect()}><CalendarPlus/> Connect Google Calendar</button>)}{nextCheckpointGoogle&&<a className="reading-plan-utility-link" href={nextCheckpointGoogle} target="_blank" rel="noreferrer">Add next only</a>}<a className="reading-plan-utility-link" href={planIcsHref} download={`${b.title.replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'').toLowerCase()||'book'}-reading-plan.ics`}><Download/> Download .ics</a></div></div>
+      {w.checkpoints.length?<ol className="reading-plan-milestones">{w.checkpoints.map((c,i)=>{
+        const done=c.targetChapter?chapter>=c.targetChapter:c.targetPage?(w.myProgress?.page||0)>=c.targetPage:false;
+        const target=c.targetChapter?`Through Chapter ${c.targetChapter}`:c.targetPage?`Through page ${c.targetPage}`:String(c.label||'').trim().toLowerCase()==='finish'&&totalPages?`Through Page ${totalPages}`:'Reading checkpoint';
+        const normalize=(v:string)=>v.toLowerCase().replace(/[^a-z0-9]/g,'');
+        const label=String(c.label||'').trim();
+        const repeatsTarget=label&&normalize(label)===normalize(target);
+        const checkpointOptions=meetingOptionsByCheckpoint.get(c.id)||[];
+        const meetingForCheckpoint=activeMeeting?.checkpointId===c.id;
+        const dueDays=daysUntilDate(c.dueAt),past=dueDays<0;
+        const currentIndex=w.checkpoints.findIndex(cp=>cp.targetChapter?chapter<(cp.targetChapter||0):cp.targetPage?(w.myProgress?.page||0)>=0&&(w.myProgress?.page||0)<(cp.targetPage||0):false);
+        const isCurrent=i===currentIndex;
+        const meta=checkpointReadingMeta(c,w.checkpoints[i-1],effectiveTotalChapters,totalPages);
+        const preview=[meta.pageRange,meta.readingTime].filter(Boolean).join(' · ')||'Spoiler-safe checkpoint. Plot details stay hidden until you reach it.';
+        const selectedOptions=checkpointOptions.filter(option=>option.myAvailable);
+        const prep=checkpointPrepPrompts(c,w.checkpoints[i-1]);
+        const canScheduleThisCheckpoint=canManage&&!activeMeeting&&c.id===nextMeetingCheckpoint?.id&&!checkpointOptions.length;
+        return <li id={`checkpoint-${c.id}`} key={c.id} className={`${done?'complete ':''}${isCurrent?'current ':''}${past?'past ':'future '}${meetingForCheckpoint?'has-scheduled-meeting':''}`.trim()}>
+          <div className="checkpoint-date"><time>{new Date(c.dueAt+'T12:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</time><small>{daysRemainingLabel(dueDays)}</small></div>
+          <span className="checkpoint-dot" aria-hidden="true"/>
+          <div className="checkpoint-copy"><span className="checkpoint-title-with-tooltip" tabIndex={0} data-preview={preview}><b>{label&&!repeatsTarget?label:target}</b></span>{label&&!repeatsTarget&&<small>{target}</small>}{(meta.pageRange||meta.readingTime)&&<span className="checkpoint-reading-meta">{meta.pageRange&&<small>{meta.pageRange}</small>}{meta.readingTime&&<small>{meta.readingTime}</small>}</span>}{meetingForCheckpoint&&<small className="checkpoint-meeting">Scheduled · {formatMeetingDateTime(activeMeeting.startsAt)}</small>}{!meetingForCheckpoint&&checkpointOptions.length>0&&<small className="checkpoint-meeting"><Clock3/> Meeting poll open · pick what works</small>}{meetingForCheckpoint&&<button type="button" className={`checkpoint-prep-toggle ${prepOpenId===c.id?'open':''}`} onClick={()=>setPrepOpenId(v=>v===c.id?null:c.id)} aria-expanded={prepOpenId===c.id}><span>Meeting prep · 3 prompts</span><ChevronRight/></button>}</div>
+          <div className="checkpoint-actions">{meetingForCheckpoint?<div className="checkpoint-scheduled"><span>{formatMeetingDateTime(activeMeeting.startsAt)}</span><button type="button" onClick={()=>nav(`/clubs/${w.club.id}/books/${currentBook.id}/meeting`)}>Open meeting room <span aria-hidden="true">→</span></button></div>:checkpointOptions.length?<><div className="checkpoint-vote-row">{checkpointOptions.map(option=>{const pending=pendingCheckpointOptionIds.has(option.id);return <button type="button" key={option.id} aria-pressed={option.myAvailable||pending} disabled={pending} className={`checkpoint-option-button ${option.myAvailable||pending?'selected':''}`} onClick={()=>void toggleCheckpointVote(option.id,!option.myAvailable)}><span className="checkpoint-option-heading"><b>{new Intl.DateTimeFormat('en-US',{weekday:'short'}).format(new Date(option.startsAt))}</b><small>{pending?'Saving…':`${option.availableCount} ${option.availableCount===1?'vote':'votes'}`}</small></span><span>{formatMeetingDateTime(option.startsAt,{weekday:undefined})}</span><small className="checkpoint-option-state">{pending?'Saving…':option.myAvailable?<><Check/> Your vote</>:<><Clock3/> Available?</>}</small></button>})}</div>{selectedOptions.length>0&&<p className="checkpoint-vote-confirmation"><Check/> <span><b>Your {selectedOptions.length===1?'vote':'picks'}:</b> {selectedOptions.map(option=>formatMeetingDateTime(option.startsAt,{weekday:'short',month:undefined,day:undefined})).join(' · ')}</span></p>}</>:canScheduleThisCheckpoint?<button type="button" className="checkpoint-meeting-button" onClick={()=>startCheckpointMeetingVote(c)}>Schedule meeting <span aria-hidden="true">→</span></button>:null}</div>
+          {prepOpenId===c.id&&<div className="checkpoint-prep-panel"><header><span>Discussion prep</span><b>{c.targetChapter?`For Chapters ${(w.checkpoints[i-1]?.targetChapter||0)+1}–${c.targetChapter}`:c.targetPage?`Through page ${c.targetPage}`:'For this checkpoint'}</b></header><ol>{prep.map((prompt,index)=><li key={prompt}><span>0{index+1}</span><p>{prompt}</p></li>)}</ol>{meetingForCheckpoint&&<button type="button" onClick={()=>nav(`/clubs/${w.club.id}/books/${currentBook.id}/meeting`)}>Open guided discussion <span aria-hidden="true">→</span></button>}</div>}
+        </li>
+      })}</ol>:<div className="reading-plan-empty"><CalendarDays/><div><h3>{currentBook.targetFinishDate?'One finish line, no forced checkpoints.':'No plan yet.'}</h3><p>{currentBook.targetFinishDate?'Your club can keep this plan simple or add checkpoints later.':'Set a finish date from the club home when everyone is ready.'}</p></div></div>}
+      {activeMeeting&&!activeMeetingCheckpointId?<footer className="reading-plan-meeting scheduled-meeting-summary"><span>Next book club discussion</span><div><b>{formatMeetingDateTime(activeMeeting.startsAt,{weekday:'long',month:'long'})}</b><button type="button" onClick={()=>nav(`/clubs/${w.club.id}/books/${currentBook.id}/meeting`)}>Open meeting room <span aria-hidden="true">→</span></button></div></footer>:null}
+    </section>}
 
-    {tab==='notes'&&<section className="reading-section margins-section"><header className="section-intro split margins-heading"><div><h2>Your margins</h2></div><div className="margin-actions"><button type="button" onClick={()=>setMarginType('note')}><StickyNote/> Add note</button><button type="button" onClick={()=>setMarginType('quote')}><Quote/> Save quote</button><button type="button" onClick={()=>{setComposerType('prediction');setTab('discussion')}}>Prediction</button></div></header>{margins.length?<div className="margin-list">{margins.map(item=><article className="margin-note" key={`${item.kind}-${item.id}`}><span>{item.kind==='quote'?'Quote':'Note'}{item.chapter?` · Ch. ${item.chapter}`:''}{item.page?` · p. ${item.page}`:''}</span><p>{item.kind==='quote'?`“${item.body}”`:item.body}</p>{item.note&&<small>{item.note}</small>}<button type="button" className="margin-delete" onClick={()=>removeMargin(item)} aria-label="Delete"><Trash2/></button></article>)}</div>:<div className="context-empty margins-empty"><StickyNote/><h3>Your margins are empty.</h3></div>}</section>}
+    {tab==='notes'&&<section className="reading-section margins-section"><header className="section-intro split margins-heading"><div><h2>Your margins</h2></div><div className="margin-actions"><button type="button" onClick={()=>openMarginEditor('note')}><StickyNote/> Add note</button><button type="button" onClick={()=>openMarginEditor('quote')}><Quote/> Save quote</button><button type="button" onClick={()=>{setComposerType('prediction');setTab('discussion')}}>Prediction</button></div></header>{margins.length?<div className="margin-list">{margins.map(item=><article className="margin-note" key={`${item.kind}-${item.id}`}><span>{item.kind==='quote'?'Quote':'Note'}{item.chapter?` · Ch. ${item.chapter}`:''}{item.page?` · p. ${item.page}`:''}</span><p>{item.kind==='quote'?`“${item.body}”`:item.body}</p>{item.note&&<small>{item.note}</small>}<button type="button" className="margin-delete" onClick={()=>removeMargin(item)} aria-label="Delete"><Trash2/></button></article>)}</div>:<div className="context-empty margins-empty"><StickyNote/><h3>Your margins are empty.</h3></div>}</section>}
 
     {tab==='characters'&&<section className="reading-section"><header className="section-intro"><h2>Character map</h2></header>{chars.length?<div className="character-list">{chars.map((c:any)=><article key={c.id||c.title}><div className="character-monogram">{c.title.slice(0,1)}</div><div><h3>{c.title}</h3><p>{c.summary_short}</p></div></article>)}</div>:<div className="context-empty"><Search/><h3>Nothing to show yet.</h3></div>}</section>}
 
@@ -307,13 +337,15 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
         <button type="button" className="primary full reading-progress-save" disabled={progressBusy} onClick={saveReadingProgress}>{progressBusy?'Saving…':'Save progress'}</button>
       </div>
     </Modal>
-    <Modal open={Boolean(marginType)} onClose={()=>setMarginType(null)} title={marginType==='quote'?'Save a quote':'Add a private note'}>
-      <div className="margin-editor"><div className="margin-capture-actions"><label><Upload/> {ocrBusy?'Reading…':'Upload'}<input type="file" accept="image/*,.txt,text/plain" hidden onChange={e=>void captureMarginFile(e.target.files?.[0])}/></label><label><Camera/> {ocrBusy?'Reading…':'Photo'}<input type="file" accept="image/*" capture="environment" hidden onChange={e=>void captureMarginFile(e.target.files?.[0])}/></label><button type="button" onClick={()=>setNotice('Take a screenshot, then upload it here and BOOK CLUB will pull in the text.')}><FileText/> Screenshot</button></div><label>{marginType==='quote'?'Quote':'Note'}<textarea value={marginBody} onChange={e=>setMarginBody(e.target.value)} autoFocus placeholder={ocrBusy?'Reading the page…':'Add your text here, or pull it in from a photo.'}/></label>{marginType==='quote'&&<label>Why save it? <span>optional</span><input value={marginNote} onChange={e=>setMarginNote(e.target.value)}/></label>}<div className="margin-editor-row"><label>Page <span>optional</span><input type="number" min="1" value={marginPage||''} onChange={e=>setMarginPage(Number(e.target.value)||undefined)}/></label><button type="button" className="primary" disabled={marginBusy||ocrBusy||!marginBody.trim()} onClick={saveMargin}>{marginBusy?'Saving…':'Save'}</button></div></div>
+    <Modal open={Boolean(marginType)} onClose={closeMarginEditor} title={marginType==='quote'?'Save a quote':'Add a note'}>
+      <div className="margin-editor"><div className="margin-capture-actions"><label><Upload/> {ocrBusy?'Reading…':'Upload'}<input type="file" accept="image/*,.txt,text/plain" hidden onChange={e=>void captureMarginFile(e.target.files?.[0])}/></label><label><Camera/> {ocrBusy?'Reading…':'Photo'}<input type="file" accept="image/*" capture="environment" hidden onChange={e=>void captureMarginFile(e.target.files?.[0])}/></label><button type="button" onClick={()=>setNotice('Take a screenshot, then upload it here and BOOK CLUB will pull in the text.')}><FileText/> Screenshot</button></div><label>{marginType==='quote'?'Quote':'Note'}<textarea value={marginBody} onChange={e=>setMarginBody(e.target.value)} autoFocus placeholder={ocrBusy?'Reading the page…':'Add your text here, or pull it in from a photo.'}/></label>{marginType==='quote'&&<label>Why save it? <span>optional</span><input value={marginNote} onChange={e=>setMarginNote(e.target.value)}/></label>}
+        <fieldset className="margin-visibility"><legend>Who can see this?</legend><div className="margin-visibility-options"><button type="button" className={marginVisibility==='private'?'selected':''} aria-pressed={marginVisibility==='private'} onClick={()=>setMarginVisibility('private')}><LockKeyhole/><span><b>Private</b><small>Only you can see this in Your margins.</small></span><i aria-hidden="true">{marginVisibility==='private'?<Check/>:null}</i></button><button type="button" className={marginVisibility==='club'?'selected':''} aria-pressed={marginVisibility==='club'} onClick={()=>setMarginVisibility('club')}><MessageCircle/><span><b>Share with club</b><small>Saves to Your margins and shares a copy with {w.club.name}. It can appear in discussion and Meeting Room.</small></span><i aria-hidden="true">{marginVisibility==='club'?<Check/>:null}</i></button></div></fieldset>
+        <div className="margin-editor-row"><label>Page <span>optional</span><input type="number" min="1" value={marginPage||''} onChange={e=>setMarginPage(Number(e.target.value)||undefined)}/></label><button type="button" className="primary" disabled={marginBusy||ocrBusy||!marginBody.trim()} onClick={saveMargin}>{marginBusy?'Saving…':marginVisibility==='club'?'Save & share':'Save privately'}</button></div></div>
     </Modal>
     <Modal open={referenceOpen} onClose={()=>setReferenceOpen(false)} title="Quick reference">
       <div className="quick-reference"><div className="search-field"><Search/><input autoFocus value={referenceQuery} onChange={e=>setReferenceQuery(e.target.value)} placeholder="Character, place, term…"/></div>{referenceQuery.trim()&&!referenceMatches.length?<div className="context-empty compact"><h3>Not available yet.</h3></div>:<div className="reference-results">{referenceMatches.map((x:any)=><article key={`${x.kind}-${x.title}`}><small>{x.kind}</small><h3>{x.title}</h3><p>{x.summary_short||x.summary_medium}</p></article>)}</div>}</div>
     </Modal>
-    <Modal open={meetingVoteOpen} onClose={()=>setMeetingVoteOpen(false)} title="Vote on a time" className="checkpoint-vote-dialog">
+    <Modal open={meetingVoteOpen} onClose={()=>setMeetingVoteOpen(false)} title="Pick potential meeting times" className="checkpoint-vote-dialog">
       <div className="meeting-poll-editor">
         <p className="checkpoint-vote-label">{checkpointVoteLabel||'Pick two or three realistic times for this checkpoint discussion.'}</p>
         {pollOptions.map((value,i)=><label className="picker-field" key={i}><span>Option {i+1}</span><DateTimePicker includeTime ariaLabel={`Meeting option ${i+1}`} value={value} onChange={next=>setPollOptions(v=>v.map((x,j)=>j===i?next:x))}/></label>)}

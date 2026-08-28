@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
-import { getMyClubs, getProfile, getWorkspace, getUnreadNotificationCount, setActiveClub as persist } from './data';
+import { getMyClubs, getProfile, getWorkspace, getUnreadNotificationCount, setActiveClub as persist, setMyTimezone } from './data';
 import type { Club, Profile, Workspace, ProfileStyle } from './model';
 import { readProfileStyleCache } from './profileStyleCache';
 import { captureClientError } from './telemetry';
@@ -24,7 +24,7 @@ type Ctx = {
 
 const C = createContext<Ctx | null>(null);
 
-function withTimeout<T>(promise: Promise<T>, ms = 12000): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms = 30000): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) =>
@@ -62,11 +62,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     let authenticatedUser: User | null = null;
     try {
-      const { data: { session }, error: sessionError } = await withTimeout(supabase.auth.getSession(), 6000);
+      const { data: { session }, error: sessionError } = await withTimeout(supabase.auth.getSession(), 10000);
       if (sessionError) throw sessionError;
       const u = session?.user ?? null;
       authenticatedUser=u;
       setUser(u);
+      if(u){try{const timezone=Intl.DateTimeFormat().resolvedOptions().timeZone;if(timezone)void setMyTimezone(timezone).catch(()=>undefined)}catch{}}
 
       if (!u) {
         setProfile(null);
@@ -78,7 +79,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const [p, c, unread] = await withTimeout(Promise.all([getProfile(u.id), getMyClubs(u.id), getUnreadNotificationCount(u.id)]));
+      const [p, c, unread] = await withTimeout(Promise.all([getProfile(u.id), getMyClubs(u.id), getUnreadNotificationCount(u.id)]), 30000);
       setUnreadNotifications(unread);
       // A locally saved sticker draft is authoritative while cloud sync is pending.
       // This prevents an unrelated workspace refresh from snapping the profile back
@@ -96,7 +97,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         : c.activeClubId || c.clubs[0]?.id;
 
       setId(id);
-      const nextWorkspace=id ? await withTimeout(getWorkspace(id, u.id)) : null;
+      const nextWorkspace=id ? await withTimeout(getWorkspace(id, u.id), 30000) : null;
       // getMyClubs is also the dev fallback that guarantees a useful Race/Sailing mix
       // before migration 011 is applied. Keep the active workspace on that same assignment.
       if(nextWorkspace&&id){
@@ -137,9 +138,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setId(id);
     activeRef.current = id;
     try {
-      await withTimeout(persist(id), 8000);
+      await withTimeout(persist(id), 15000);
       if (user) {
-        const nextWorkspace=await withTimeout(getWorkspace(id, user.id));
+        const nextWorkspace=await withTimeout(getWorkspace(id, user.id), 30000);
         const assignedScene=clubs.find(club=>club.id===id)?.progressScene;
         if(assignedScene)nextWorkspace.club.progressScene=assignedScene;
         setWorkspace(nextWorkspace);
@@ -172,6 +173,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const ch = sb.channel(`club:${activeClubId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reading_progress' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'checkpoint_checkins' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'replies' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reactions' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'meeting_rsvps' }, scheduleRefresh)

@@ -7,13 +7,15 @@ export type Profile = { id:string; displayName:string; username?:string; avatarU
 export type Book = { id:string; title:string; author:string; coverUrl?:string; description?:string; pages?:number; year?:number; isbn?:string };
 export type Club = { id:string; name:string; ownerId:string; tone:Tone; phase:Phase; inviteCode?:string; coverImageUrl?:string; memberCount:number; progressScene?:ProgressScene };
 export type Member = Profile & { role:string; chapter?:number; page?:number; percent?:number; status?:string; format?:string };
-export type ClubBook = { id:string; clubId:string; book:Book; status:string; startDate?:string; targetFinishDate?:string; totalChapters?:number; totalPages?:number; suggestedBy?:Profile };
-export type Meeting = { id:string; startsAt:string; meetingType?:string; meetingUrl?:string; response?:'going'|'maybe'|'cant'; status?:string };
-export type MeetingOption = { id:string; startsAt:string; availableCount:number; myAvailable:boolean };
+export type SuggestedReadingPlan = { generatedAt?:string; durationDays?:number; checkpointCount?:number; basis?:'chapters'|'pages'|'duration'; total?:number; checkpoints?:Array<{day:number;targetChapter?:number;targetPage?:number;progressPercent?:number}> };
+export type ClubBook = { id:string; clubId:string; book:Book; status:string; startDate?:string; targetFinishDate?:string; totalChapters?:number; totalPages?:number; suggestedReadingPlan?:SuggestedReadingPlan; suggestedBy?:Profile };
+export type Meeting = { id:string; startsAt:string; checkpointId?:string; meetingType?:string; meetingUrl?:string; response?:'going'|'maybe'|'cant'; status?:string };
+export type MeetingOption = { id:string; startsAt:string; checkpointId?:string; availableCount:number; myAvailable:boolean };
 export type Reply = { id:string; postId:string; userId:string; body:string; createdAt:string; author?:Profile };
 export type Reaction = { id?:string; postId:string; userId:string; reaction:string; createdAt?:string };
 export type Thought = { id:string; userId:string; body:string; type:string; chapter?:number; createdAt:string; author?:Profile; reactions?:Reaction[]; replyItems?:Reply[]; savedForMeeting?:boolean; predictionRevealed?:boolean };
 export type Checkpoint = { id:string; dueAt:string; targetChapter?:number; targetPage?:number; label?:string };
+export type CheckpointCheckin = { checkpointId:string; userId:string; status:'reached'|'catching_up'|'not_yet'; updatedAt:string };
 export type MarginItem = { id:string; kind:'note'|'quote'; body:string; note?:string; chapter?:number; page?:number; createdAt:string };
 export type ClubRating = { rating:number; review?:string; recommend?:boolean };
 export type MeetingQuestion = { id:string; postId?:string; body:string; createdAt:string; addedBy?:Profile };
@@ -26,6 +28,7 @@ export type Workspace = {
   meetingOptions:MeetingOption[];
   thoughts:Thought[];
   checkpoints:Checkpoint[];
+  checkpointCheckins:CheckpointCheckin[];
   acquired:number;
   myProgress?:{chapter?:number; page?:number; percent?:number; status?:string; format?:string};
   archiveBooks:Book[];

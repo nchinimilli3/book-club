@@ -4,7 +4,7 @@ import App from './App';
 import { AuthGate } from './components/AuthGate';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { installGlobalErrorReporting } from './lib/telemetry';
-import './styles/system.css';
+import './styles/index.css';
 
 installGlobalErrorReporting();
 if(import.meta.env.PROD && 'serviceWorker' in navigator){

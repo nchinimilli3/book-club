@@ -23,6 +23,7 @@
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^4.3.4",
+    "postcss": "^8.5.26",
     "typescript": "^5.7.2",
     "vite": "^6.0.5"
   }

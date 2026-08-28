@@ -88,3 +88,20 @@ The app must remain usable when these providers are unavailable.
 `npm run test:release` currently validates TypeScript, product smoke checks, source-level button/route/RPC/asset invariants, schema-contract coverage and Worker JavaScript syntax.
 
 The final production sign-off is the SQL `PASS` report plus the live multi-account lifecycle test; neither is faked by local/demo state.
+
+## CSS architecture split — 2026-08-26
+
+The canonical deep-refactor stylesheet was split from one global file into an explicit ownership tree under `src/styles/`.
+
+Validation performed for this split:
+
+- 2,617 selector/context combinations match the pre-split canonical stylesheet
+- 0 declaration-sequence differences
+- 0 protected acrylic/shelf differences
+- all 25 CSS files (including the root index) parse successfully with PostCSS
+- production smoke checks pass
+- schema/RPC contract audit passes (27 tables, 33 RPCs)
+- Worker syntax check passes
+- production UI primitive/acrylic hash lock passes
+
+A fresh full TypeScript/Vite run was not repeated in the container because dependency installation could not complete in the network-isolated environment. This pass changes CSS ownership, the root CSS import path, documentation, and adds PostCSS as an explicit dev dependency; it does not change application TypeScript behavior.

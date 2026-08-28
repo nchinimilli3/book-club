@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { trackEvent } from './telemetry';
+import { resolveBookCover } from './api';
 import type { Book, Club, ClubBook, Member, Profile, Thought, Workspace, Tone, Phase, ProfileStyle, MarginItem, ClubRating, AppNotification, MeetingQuestion, ProgressScene } from './model';
 
 const toneMap: Record<string, Tone> = { pink:'rose', petal:'rose', rose:'rose', olive:'olive', butter:'gold', gold:'gold', lavender:'plum', plum:'plum', sky:'blue', blue:'blue', wine:'clay', clay:'clay' };
@@ -55,6 +56,12 @@ function isBackendImplementationError(error:any){
 
 function fail(error: any, fallback: string): never {
   throw new Error(isBackendImplementationError(error)?fallback:(error?.message || fallback));
+}
+
+function isSchemaMissing(error:any,name:string):boolean{
+  const code=String(error?.code||'');
+  const text=`${error?.message||''} ${error?.details||''} ${error?.hint||''}`.toLowerCase();
+  return (code==='PGRST205'||code==='PGRST202'||code==='42P01'||code==='42883'||text.includes('schema cache')||text.includes('does not exist'))&&text.includes(name.toLowerCase());
 }
 
 function isMeetingSchemaMissing(error: any): boolean {
@@ -146,7 +153,7 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
     supabase.from('club_members').select('role,user_id').eq('club_id', clubId),
     supabase.from('club_books').select('*,books(*)').eq('club_id', clubId).order('created_at', { ascending: false }),
     supabase.from('meetings').select('*,meeting_rsvps(response,user_id)').eq('club_id', clubId).neq('status','cancelled').order('starts_at', { ascending: true }),
-    supabase.from('meeting_options').select('id,starts_at,meeting_option_responses(user_id,available)').eq('club_id',clubId).order('starts_at'),
+    supabase.from('meeting_options').select('id,club_book_id,checkpoint_id,starts_at,meeting_option_responses(user_id,available)').eq('club_id',clubId).order('starts_at'),
   ]);
   if (memberResult.error) fail(memberResult.error, 'Could not load club members');
   if (clubBookResult.error) fail(clubBookResult.error, 'Could not load club books');
@@ -159,7 +166,7 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
   const clubBooks: any[] = clubBookResult.data || [];
   const meetings: any[] = meetingResult.data || [];
   const meetingOptions = (meetingOptionResult.error ? [] : meetingOptionResult.data || []).map((x:any)=>({
-    id:x.id, startsAt:x.starts_at,
+    id:x.id, startsAt:x.starts_at, checkpointId:x.checkpoint_id||undefined,
     availableCount:(x.meeting_option_responses||[]).filter((r:any)=>r.available).length,
     myAvailable:(x.meeting_option_responses||[]).some((r:any)=>r.user_id===userId&&r.available),
   }));
@@ -171,6 +178,7 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
 
   let thoughts: Thought[] = [];
   let checkpoints: any[] = [];
+  let checkpointCheckins: any[] = [];
   let progress: any;
   let acquired = 0;
   let myClubRating: ClubRating | undefined;
@@ -231,6 +239,12 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
       replyItems: replyRows.filter((r:any)=>r.post_id===p.id).map((r:any)=>{const rp:any=profileMap.get(r.user_id);return { id:r.id,postId:r.post_id,userId:r.user_id,body:r.body,createdAt:r.created_at,author:rp?{id:r.user_id,displayName:rp.display_name||'Reader',username:rp.username||undefined,avatarUrl:profileAvatar(rp)}:undefined };}),
     }));
     checkpoints = (checkpointResult.data || []).map((x: any) => ({ id: x.id, dueAt: x.due_at, targetChapter: x.target_chapter || undefined, targetPage: x.target_page || undefined, label: x.label || undefined }));
+    const checkpointIds=checkpoints.map((x:any)=>x.id);
+    if(checkpointIds.length){
+      const checkpointCheckinResult=await supabase.from('checkpoint_checkins').select('checkpoint_id,user_id,status,updated_at').in('checkpoint_id',checkpointIds);
+      if(checkpointCheckinResult.error&&!isSchemaMissing(checkpointCheckinResult.error,'checkpoint_checkins'))fail(checkpointCheckinResult.error,'Could not load checkpoint check-ins');
+      checkpointCheckins=(checkpointCheckinResult.error?[]:checkpointCheckinResult.data||[]).map((x:any)=>({checkpointId:x.checkpoint_id,userId:x.user_id,status:x.status,updatedAt:x.updated_at}));
+    }
     memberProgressRows=progressResult.data||[];
     const mine: any = memberProgressRows.find((p: any) => p.user_id === userId);
     progress = mine ? { chapter: mine.chapter || undefined, page: mine.page || undefined, percent: mine.percent != null ? Number(mine.percent) : undefined, status: mine.status ?? mine.participation_status, format: mine.format } : undefined;
@@ -247,12 +261,16 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
     targetFinishDate: active.target_finish_date || active.target_finish_at || undefined,
     totalChapters: active.total_chapters || undefined,
     totalPages: active.total_pages || undefined,
+    suggestedReadingPlan: active.suggested_reading_plan || undefined,
   } : undefined;
 
-  const mtg = meetings.find((m: any) => new Date(m.starts_at).getTime() > Date.now() - 10800000) || meetings[0];
+  // A confirmed meeting is always anchored to a reading checkpoint. Older unlinked
+  // records are deliberately excluded so they cannot be presented as the next discussion.
+  const linkedMeetings=meetings.filter((m:any)=>m.club_book_id===active?.id&&m.checkpoint_id);
+  const mtg = linkedMeetings.find((m: any) => new Date(m.starts_at).getTime() > Date.now() - 10800000) || linkedMeetings[0];
   const rawResponse = mtg?.meeting_rsvps?.find((r: any) => r.user_id === userId)?.response;
   const response = rawResponse === 'yes' ? 'going' : rawResponse === 'no' ? 'cant' : rawResponse;
-  const meeting = mtg ? { id: mtg.id, startsAt: mtg.starts_at, meetingType: mtg.meeting_type, meetingUrl: mtg.meeting_url || mtg.join_url || undefined, response } : undefined;
+  const meeting = mtg ? { id: mtg.id, startsAt: mtg.starts_at, checkpointId:mtg.checkpoint_id, meetingType: mtg.meeting_type, meetingUrl: mtg.meeting_url || mtg.join_url || undefined, response } : undefined;
   const archiveBooks = clubBooks.filter((r: any) => ['finished','archived'].includes(r.status)).map((r: any) => bookFrom(r.books));
   const ideaBooks: ClubBook[] = clubBooks.filter((r: any) => ['idea','nominated','ballot'].includes(r.status)).map((r: any) => {
     const suggested:any = r.created_by ? profileMap.get(r.created_by) : undefined;
@@ -261,7 +279,7 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
 
   return {
     club: { id: c.id, name: c.name, ownerId: c.owner_id, tone: toneMap[c.accent_palette || c.palette] || 'rose', phase: phaseMap(c.status), inviteCode: c.invite_code, coverImageUrl: c.cover_image_url, memberCount: members.length, progressScene: resolveProgressScene(c) },
-    members, currentBook, ideaBooks, meeting, meetingOptions, thoughts: thoughts.map(t=>({...t,savedForMeeting:meetingQuestions.some(q=>q.postId===t.id)})), checkpoints, acquired, myProgress: progress, archiveBooks, myClubRating, lockedPostCount, meetingQuestions,
+    members, currentBook, ideaBooks, meeting, meetingOptions, thoughts: thoughts.map(t=>({...t,savedForMeeting:meetingQuestions.some(q=>q.postId===t.id)})), checkpoints, checkpointCheckins, acquired, myProgress: progress, archiveBooks, myClubRating, lockedPostCount, meetingQuestions,
   };
 }
 
@@ -298,17 +316,17 @@ export async function rsvp(meetingId: string, _userId: string, response: string)
   void trackEvent('meeting_rsvp',{meetingId,response:canonical});
 }
 
-export async function scheduleMeeting(clubId: string, clubBookId: string | undefined, _userId: string, startsAt: string, meetingType = 'facetime', meetingUrl?: string, meetingId?: string) {
+export async function scheduleMeeting(clubId: string, clubBookId: string | undefined, _userId: string, startsAt: string, meetingType = 'facetime', meetingUrl?: string, meetingId?: string, checkpointId?:string) {
   if (!supabase) throw new Error('Supabase unavailable');
-  const {data,error}=await supabase.rpc('save_club_meeting',{target_club_id:clubId,target_club_book_id:clubBookId||null,target_meeting_id:meetingId||null,target_starts_at:startsAt,target_meeting_type:meetingType,target_meeting_url:meetingUrl||null});
+  const {data,error}=await supabase.rpc('save_club_meeting',{target_club_id:clubId,target_club_book_id:clubBookId||null,target_meeting_id:meetingId||null,target_starts_at:startsAt,target_meeting_type:meetingType,target_meeting_url:meetingUrl||null,target_checkpoint_id:checkpointId||null});
   if(error) fail(error,'Could not save meeting');
   void trackEvent('meeting_scheduled',{clubId,clubBookId,meetingId:data||meetingId});
   return data;
 }
 
-export async function saveMeetingOptions(clubId:string,clubBookId:string|undefined,startsAt:string[]){
+export async function saveMeetingOptions(clubId:string,clubBookId:string|undefined,startsAt:string[],checkpointId?:string){
   if(!supabase)throw new Error('Supabase unavailable');
-  const {error}=await supabase.rpc('save_meeting_options',{target_club_id:clubId,target_club_book_id:clubBookId||null,target_options:startsAt});
+  const {error}=await supabase.rpc('save_meeting_options',{target_club_id:clubId,target_club_book_id:clubBookId||null,target_checkpoint_id:checkpointId||null,target_options:startsAt});
   if(error)failMeetingSchema(error,'Could not save meeting options');
   void trackEvent('meeting_options_saved',{clubId,count:startsAt.length});
 }
@@ -318,6 +336,13 @@ export async function setMeetingOptionResponse(optionId:string,available:boolean
   const {error}=await supabase.rpc('set_meeting_option_response',{target_option_id:optionId,target_available:available});
   if(error)failMeetingSchema(error,'Could not save your availability');
   void trackEvent('meeting_availability_saved',{optionId,available});
+}
+
+export async function submitMeetingPoll(checkpointId:string){
+  if(!supabase)throw new Error('Supabase unavailable');
+  const {data,error}=await supabase.rpc('submit_meeting_poll',{target_checkpoint_id:checkpointId});
+  if(error)failMeetingSchema(error,'Could not submit meeting availability');
+  return data;
 }
 
 export async function createThought(bookId: string, userId: string, body: string, chapter?: number, type = 'thought') {
@@ -428,7 +453,7 @@ export async function getPersonalLibrary(userId: string) {
 
 export async function getBallot(clubId: string, userId: string) {
   if (!supabase) return null;
-  const ballotResult = await supabase.from('ballots').select('*').eq('club_id', clubId).eq('status', 'open').order('created_at', { ascending: false }).limit(1).maybeSingle();
+  const ballotResult = await supabase.from('ballots').select('*').eq('club_id', clubId).in('status', ['open','needs_decision']).order('created_at', { ascending: false }).limit(1).maybeSingle();
   if (ballotResult.error && ballotResult.error.code !== 'PGRST116') fail(ballotResult.error, 'Could not load ballot');
   const ballot: any = ballotResult.data;
   if (!ballot) return null;
@@ -444,9 +469,9 @@ export async function getBallot(clubId: string, userId: string) {
   return { ...ballot, legacyPreferenceMode, nominations: (nomResult.data || []).map((n: any) => ({ id: n.id, note: n.note ?? n.why ?? '', book: bookFrom(n.books), voted: (voteResult.data || []).some((v: any) => v.nomination_id === n.id), preference:(preferenceResult.data||[]).find((v:any)=>v.nomination_id===n.id)?.preference })) };
 }
 
-export async function startBallotFromIdeas(clubId: string) {
+export async function startBallotFromIdeas(clubId: string, closesAt?:string) {
   if (!supabase) throw new Error('Supabase unavailable');
-  const {data,error} = await supabase.rpc('start_ballot_from_ideas', { target_club_id: clubId });
+  const {data,error} = await supabase.rpc('start_ballot_from_ideas', { target_club_id: clubId, requested_closes_at: closesAt || null });
   if(error) fail(error,'Could not start vote');
   void trackEvent('ballot_started',{clubId,ballotId:data});
   return data;
@@ -484,6 +509,27 @@ export async function finalizeBallot(ballotId: string) {
   if (error) fail(error, 'Could not finalize vote');
   void trackEvent('ballot_finalized',{ballotId,clubBookId:data});
   return data;
+}
+
+export async function decideTiedBallot(ballotId:string,nominationId:string){
+  if(!supabase)throw new Error('Supabase unavailable');
+  const {data,error}=await supabase.rpc('decide_tied_ballot',{target_ballot_id:ballotId,target_nomination_id:nominationId});
+  if(error)fail(error,'Could not choose the tied book');
+  return data;
+}
+
+export async function setCheckpointCheckin(checkpointId:string,status:'reached'|'catching_up'|'not_yet'){
+  if(!supabase)throw new Error('Supabase unavailable');
+  const {data,error}=await supabase.rpc('set_checkpoint_checkin',{target_checkpoint_id:checkpointId,target_status:status});
+  if(error&&isSchemaMissing(error,'set_checkpoint_checkin')) throw new Error('Checkpoint check-ins are not enabled yet. Run migration 015_repair_checkpoint_checkins.sql in Supabase.');
+  if(error)fail(error,'Could not save checkpoint check-in');
+  return data;
+}
+
+export async function setMyTimezone(timezone:string){
+  if(!supabase||!timezone)return;
+  const {error}=await supabase.rpc('set_my_timezone',{target_timezone:timezone});
+  if(error)throw error;
 }
 
 
@@ -791,8 +837,9 @@ function parseCsvDocument(text:string){
   if(quoted)throw new Error('This CSV looks incomplete. Export a fresh Goodreads library file and try again.');
   return rows;
 }
-function cleanGoodreadsIsbn(value?:string){return (value||'').replace(/[="']/g,'').replace(/\s/g,'').trim()||undefined}
-function goodreadsCover(isbn?:string){return isbn?`https://covers.openlibrary.org/b/isbn/${encodeURIComponent(isbn)}-L.jpg?default=false`:undefined}
+function cleanGoodreadsIsbn(value?:string){const cleaned=(value||'').replace(/[="']/g,'').replace(/[^0-9Xx]/g,'').toUpperCase();return cleaned.length===10||cleaned.length===13?cleaned:undefined}
+function goodreadsPreviewCover(isbn?:string){return isbn?`https://covers.openlibrary.org/b/isbn/${encodeURIComponent(isbn)}-L.jpg?default=false`:undefined}
+function isLowQualityStoredCover(value?:string|null){const url=String(value||'').toLowerCase();return !url||url.includes('covers.openlibrary.org')||/(placeholder|no[-_ ]?cover|default[-_ ]?cover|nocover)/.test(url)}
 function normalizeGoodreadsShelf(value?:string):GoodreadsImportBook['shelf']{
   const shelf=(value||'').toLowerCase();
   if(/(^|[,;\s])currently-reading($|[,;\s])/.test(shelf))return'currently_reading';
@@ -818,7 +865,7 @@ function parseGoodreadsText(text:string):GoodreadsImportBook[]{
     const isbn13=cleanGoodreadsIsbn(get('ISBN13')),isbn=cleanGoodreadsIsbn(get('ISBN')),preferredIsbn=isbn13||isbn;
     const rawRating=Number(get('My Rating')),rating=rawRating>=1&&rawRating<=5?rawRating:undefined;
     const pagesRaw=Number(get('Number of Pages')),yearRaw=Number(get('Year Published')||get('Original Publication Year'));
-    return {title,author,isbn,isbn13,rating,pages:pagesRaw>0?pagesRaw:undefined,year:yearRaw>0?yearRaw:undefined,dateRead:normalizeGoodreadsDate(get('Date Read')),shelf:normalizeGoodreadsShelf(get('Exclusive Shelf')||get('Bookshelves')),cover:goodreadsCover(preferredIsbn)} as GoodreadsImportBook;
+    return {title,author,isbn,isbn13,rating,pages:pagesRaw>0?pagesRaw:undefined,year:yearRaw>0?yearRaw:undefined,dateRead:normalizeGoodreadsDate(get('Date Read')),shelf:normalizeGoodreadsShelf(get('Exclusive Shelf')||get('Bookshelves')),cover:goodreadsPreviewCover(preferredIsbn)} as GoodreadsImportBook;
   }).filter((row):row is GoodreadsImportBook=>Boolean(row));
 }
 function summarizeGoodreads(rows:GoodreadsImportBook[]):GoodreadsImportPreview{
@@ -829,13 +876,39 @@ export async function previewGoodreadsImport(file:File):Promise<GoodreadsImportP
   return summarizeGoodreads(parseGoodreadsText(await file.text()));
 }
 
+async function resolveGoodreadsImportCovers(rows:GoodreadsImportBook[]){
+  const results=new Map<number,string|undefined>();
+  let next=0;
+  const workers=Array.from({length:Math.min(8,rows.length)},async()=>{
+    while(next<rows.length){
+      const index=next++;
+      const item=rows[index],preferredIsbn=item.isbn13||item.isbn;
+      try{
+        const resolved=await Promise.race([
+          resolveBookCover({title:item.title,author:item.author,isbn:preferredIsbn}),
+          new Promise<null>(resolve=>setTimeout(()=>resolve(null),6500)),
+        ]);
+        results.set(index,resolved?.url||item.cover);
+      }catch{results.set(index,item.cover)}
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 export async function importGoodreads(userId:string,file:File,onProgress?:(done:number,total:number)=>void):Promise<GoodreadsImportResult>{
   const sb=supabase;if(!sb)throw new Error('Supabase unavailable');
   const rows=parseGoodreadsText(await file.text()),summary=summarizeGoodreads(rows);let imported=0;
-  for(const item of rows){
+  const resolvedCovers=await resolveGoodreadsImportCovers(rows);
+  for(let index=0;index<rows.length;index++){
+    const item=rows[index];
     const preferredIsbn=item.isbn13||item.isbn;
-    const bookId=await ensureBook({title:item.title,author:item.author,isbn:preferredIsbn,pages:item.pages,year:item.year,cover:item.cover});
-    if(item.cover){await sb.from('books').update({cover_url:item.cover}).eq('id',bookId).is('cover_url',null)}
+    const importCover=resolvedCovers.get(index)||item.cover;
+    const bookId=await ensureBook({title:item.title,author:item.author,isbn:preferredIsbn,pages:item.pages,year:item.year,cover:importCover});
+    if(importCover){
+      const current=await sb.from('books').select('cover_url').eq('id',bookId).maybeSingle();
+      if(!current.error&&isLowQualityStoredCover(current.data?.cover_url))await sb.from('books').update({cover_url:importCover}).eq('id',bookId);
+    }
     const existing=await sb.from('personal_books').select('id,rating,date_finished,is_favorite,is_public,source').eq('user_id',userId).eq('book_id',bookId).maybeSingle();
     if(existing.error&&existing.error.code!=='PGRST116')fail(existing.error,'Could not check your existing library');
     const now=new Date().toISOString();

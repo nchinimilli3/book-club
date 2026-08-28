@@ -136,15 +136,16 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   };
 
   return (
+
+
+    
     <div className="auth-page">
       <div className="auth-art" aria-hidden="true">
-        <span className="auth-star star-one">✦</span>
-        <span className="auth-star star-two">✷</span>
-        <div className="auth-book-stack">
-          <div className="auth-book auth-book-one">READ</div>
-          <div className="auth-book auth-book-two">TOGETHER</div>
-          <div className="auth-book auth-book-three">REMEMBER</div>
-        </div>
+        <img
+          src = "/login-photo.jpg"
+          alt = " "
+          className = "auth-photo"
+          />
       </div>
 
       <section className="auth-panel">
@@ -153,7 +154,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         {mode === 'welcome' && (
           <div className="auth-welcome">
             <h1>Your book club,<br /><em>all in one place.</em></h1>
-            <p className="auth-intro">Pick the next read, save the thoughts you have along the way, and actually make the FaceTime happen.</p>
+            <p className="auth-intro">Pick your next read, save the thoughts you have along the way, and actually make the FaceTime happen.</p>
             <div className="auth-actions">
               <button className="primary auth-primary" onClick={() => setMode('signup')}>Create an account</button>
               <button className="auth-secondary oauth-button" onClick={() => void continueWithGoogle()} disabled={loading}>

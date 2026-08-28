@@ -1,54 +1,71 @@
-# CSS Preservation Refactor Map
+# CSS Ownership / Preservation Map
 
-This app's current visual design is treated as approved. The first CSS refactor goal is preservation: identify the live cascade winners, consolidate one component at a time, and verify screenshots before deleting superseded historical rules.
+The old monolithic `src/styles/system.css` has been retired. The current design is still treated as approved and preservation-first.
 
-## Protected Boundary
+## Global entry point
 
-Do not edit these files or selectors during the CSS cleanup unless the acrylic shelf work is explicitly unlocked:
+`src/main.tsx` imports only:
+
+- `src/styles/index.css`
+
+`index.css` declares the cascade order explicitly. Do not add a second global stylesheet import in `main.tsx`.
+
+## Ownership
+
+Foundation:
+- `src/styles/foundation/tokens.css`
+- `src/styles/foundation/globals.css`
+
+Shared UI:
+- `src/styles/components/navigation.css`
+- `src/styles/components/buttons.css`
+- `src/styles/components/forms.css`
+- `src/styles/components/modal.css`
+- `src/styles/components/books.css`
+- `src/styles/components/status.css`
+- `src/styles/components/calendar.css`
+- `src/styles/components/shared.css`
+
+Features:
+- `src/styles/features/auth.css`
+- `src/styles/features/clubs.css`
+- `src/styles/features/archive.css`
+- `src/styles/features/member-profile.css`
+- `src/styles/features/club-home.css`
+- `src/styles/features/search.css`
+- `src/styles/features/meetings.css`
+- `src/styles/features/reading-room.css`
+- `src/styles/features/profile.css`
+- `src/styles/features/stickers.css`
+- `src/styles/features/onboarding.css`
+- `src/styles/features/notifications.css`
+- `src/styles/features/settings.css`
+
+## Protected shelf boundary
+
+Do not edit without explicitly unlocking:
 
 - `src/components/AcrylicBookshelf.tsx`
 - `src/components/acrylic-bookshelf.css`
-- `.acrylic-*`
-- `.acrylic*`
-- `.home-acrylic*`
-- `.profile-acrylic-*`
-- `.shelf-object`
-- `.shelf-track`
-- `.shelf-books-new`
-- `.shelf-book-*`
+- `src/styles/features/shelves.locked.css`
 
-The current lock is enforced by `scripts/audit-ui-primitives.mjs` against `ACRYLIC_LOCK.sha256`.
+The component files remain enforced by `ACRYLIC_LOCK.sha256` and `scripts/audit-ui-primitives.mjs`.
 
-## Refactor Order
+## Rules for future work
 
-1. Global tokens/header
-2. Club homepage
-3. Progress race/sailing
-4. Meetings
-5. Search
-6. Reading Room
-7. Profile, excluding every acrylic selector
-8. Sticker editor
-9. Onboarding
-10. Notifications
+1. Put new CSS in the owner file for that component/feature.
+2. Do not create dated “feedback pass”, “final pass”, or “final final” blocks.
+3. Do not add a new global override file to make a feature win the cascade.
+4. Prefer component/feature ownership over `!important`.
+5. If a selector genuinely spans multiple surfaces, use a shared component stylesheet and document the reason.
+6. Run `npm run audit:css` after CSS changes.
+7. Preserve the shelf lock unless the shelf itself is the explicit task.
 
-Sticker editor and Reading Room are the highest-risk non-shelf areas because both have many late override passes. Consolidate them only after baseline screenshots exist for desktop, tablet, and mobile.
+## Split verification
 
-## Component Workflow
+The split was checked against the canonical deep-refactor monolith:
 
-For each component:
-
-1. Run `npm run audit:css` and note every occurrence for the component selectors.
-2. Capture current desktop, tablet, and mobile screenshots.
-3. Determine the computed winner for the component's base and responsive states.
-4. Create one canonical base block and the minimum responsive blocks.
-5. Verify screenshots against the baseline.
-6. Remove only the superseded rules for that component.
-
-Avoid broad cleanup while a component is being consolidated. Do not remove `!important`, change breakpoints, rename classes, or split `system.css` as part of the same step unless it is necessary for that component and has visual parity coverage.
-
-## Current Cascade Risk
-
-`system.css` contains a `feedback-final.css` section that says it intentionally loads last, but substantial CSS appears after it. Treat comments such as "final" and "source of truth" as historical notes until the actual cascade has been checked.
-
-Use `scripts/audit-css-architecture.mjs` as the repeatable starting point for this check.
+- 2,617 selector/context combinations before and after
+- 0 declaration-sequence differences
+- 0 protected shelf/acrylic differences
+- 0 same-context duplicate groups outside the protected shelf boundary

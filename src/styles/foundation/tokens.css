@@ -1,0 +1,21 @@
+/* foundation/tokens.css — generated from the canonical 2026-08 preservation cascade. */
+.tone-olive .club-color{background:var(--olive)}.tone-gold .club-color{background:var(--gold)}.tone-plum .club-color{background:var(--plum)}.tone-blue .club-color{background:var(--blue)}.tone-clay .club-color{background:var(--clay)}.reading-room.tone-olive{--tone:var(--olive);--room-tone:var(--olive)}.reading-room.tone-gold{--tone:var(--gold);--room-tone:var(--gold)}.reading-room.tone-plum{--tone:var(--plum);--room-tone:var(--plum)}.reading-room.tone-blue{--tone:var(--blue);--room-tone:var(--blue)}.reading-room.tone-clay{--tone:var(--clay);--room-tone:var(--clay)}.club-home.tone-olive{--tone:var(--moss)}.club-home.tone-gold{--tone:#aa906a}.club-home.tone-plum{--tone:#746d78}.club-home.tone-blue{--tone:var(--weathered-blue)}.club-home.tone-clay{--tone:var(--clay)}.club-switcher-dot.tone-olive{background:var(--olive)}.club-switcher-dot.tone-gold{background:var(--gold)}.club-switcher-dot.tone-plum{background:var(--plum)}.club-switcher-dot.tone-blue{background:var(--blue)}.club-switcher-dot.tone-clay{background:var(--clay)}:root{--radius:18px;--section-radius:28px;--focus:0 0 0 3px rgba(36,30,26,.18);
+  --ocean:#173941;--slate:#557278;--weathered-blue:#9db4b7;--umber:#755744;--sand:#c6b49c;--moss:#74785f;--brick:#8a4f40;
+  --serif:'Times New Roman',Times,serif;--sans:'DM Sans',system-ui,sans-serif;--paper-radius:12px;
+  --content-wide:1240px;--content-text:820px;
+  --rose:#f78fa4;
+  --olive:#91aa6f;
+  --gold:#f1c85b;
+  --plum:#aa91df;
+  --blue:#78b4cf;
+  --clay:#ee8368;
+  --cover-radius:12px;
+  --content-max:1320px;
+  --paper:#ffffff!important;--paper-2:#f4f6f8!important;--ink:#171a1d!important;--muted:#68717a!important;
+  --line:rgba(23,26,29,.13)!important;--line-strong:rgba(23,26,29,.23)!important;
+  --shadow:0 18px 48px rgba(25,32,40,.10)!important;
+  --control-radius:11px;
+  --section-gap:72px;
+}@media(max-width:720px){
+  :root{--section-gap:48px}
+}

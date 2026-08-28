@@ -16,9 +16,26 @@ export type BookDecisionDetails = BookSearchResult & {
   subjects:string[];
 };
 
+const cleanSubjectValue=(value:any)=>{
+  let subject=String(value||'').replace(/[_-]+/g,' ').trim();
+  if(!subject)return '';
+  const prefixed=subject.match(/^([a-z][a-z\s-]{1,24})\s*:\s*(.+)$/i);
+  if(prefixed){
+    const prefix=prefixed[1].trim().toLowerCase();
+    const remainder=prefixed[2].trim();
+    // Open Library and other catalogs sometimes mix relationship/taxonomy metadata
+    // into their subject arrays. Those values are not genres and should never leak
+    // into the reader-facing UI. Keep true category/genre prefixes, strip the rest.
+    if(['series','subject','subjects','topic','topics','person','people','place','places','time','times'].includes(prefix))return '';
+    if(['genre','genres','category','categories'].includes(prefix))subject=remainder;
+    else return '';
+  }
+  if(/^series\s*(?:[-:=]|\b)/i.test(subject))return '';
+  return subject.replace(/\s+/g,' ').trim();
+};
+
 const cleanSubjects=(subjects:any[]) => (subjects||[])
-  .map(String)
-  .map(s=>s.replace(/[_-]+/g,' ').trim())
+  .map(cleanSubjectValue)
   .filter(Boolean)
   .filter((s,i,a)=>a.findIndex(x=>x.toLowerCase()===s.toLowerCase())===i)
   .slice(0,18);
@@ -127,46 +144,99 @@ export async function getBookDecisionDetails(book:BookSearchResult):Promise<Book
 export async function findBestBookCover(book:{title:string;author:string;isbn?:string}):Promise<string|undefined>{
   const title=book.title.trim(),author=book.author.trim();
   const norm=(v:string)=>v.toLowerCase().normalize('NFKD').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
-  const titleKey=norm(title),authorKey=norm(author);
+  const stripSeries=(v:string)=>v
+    .replace(/\s*[\[(][^\])]*(?:#\s*\d+|book\s*\d+|series|duet|trilogy|saga)[^\])]*[\])]\s*$/i,'')
+    .replace(/\s*[-–—:]\s*(?:book\s*)?#?\d+\s*$/i,'')
+    .trim()||v.trim();
+  const authorVariants=(v:string)=>{
+    const raw=v.trim();
+    const variants=[raw];
+    if(raw.includes(',')){
+      const parts=raw.split(',').map(x=>x.trim()).filter(Boolean);
+      if(parts.length>=2)variants.push(`${parts.slice(1).join(' ')} ${parts[0]}`);
+    }
+    return [...new Set(variants.map(norm).filter(Boolean))];
+  };
+  const baseTitle=stripSeries(title),titleKeys=[...new Set([norm(title),norm(baseTitle)].filter(Boolean))];
+  const authorKeys=authorVariants(author);
+  const cleanIsbn=String(book.isbn||'').replace(/[^0-9X]/gi,'');
+  const titleScore=(candidate:string)=>{
+    const key=norm(candidate);
+    let best=0;
+    for(const target of titleKeys){
+      if(key===target)best=Math.max(best,120);
+      else if(key.startsWith(target)||target.startsWith(key))best=Math.max(best,88);
+      else if(key.includes(target)||target.includes(key))best=Math.max(best,70);
+    }
+    return best;
+  };
+  const authorScore=(candidate:string)=>{
+    const key=norm(candidate);
+    let best=0;
+    for(const target of authorKeys){
+      if(key===target)best=Math.max(best,60);
+      else if(key.includes(target)||target.includes(key))best=Math.max(best,42);
+      else{
+        const a=new Set(key.split(' ').filter(Boolean)),b=new Set(target.split(' ').filter(Boolean));
+        const overlap=[...b].filter(x=>a.has(x)).length;
+        if(overlap>=2)best=Math.max(best,30);
+      }
+    }
+    return best;
+  };
   const googleCover=(links:any)=>{
     const raw=links?.extraLarge||links?.large||links?.medium||links?.small||links?.thumbnail||links?.smallThumbnail;
     return raw?String(raw).replace('http://','https://').replace('&zoom=1','&zoom=2'):undefined;
   };
+
+  const openQueries:URLSearchParams[]=[];
+  if(book.isbn)openQueries.push(new URLSearchParams({isbn:book.isbn,limit:'18',fields:'title,author_name,cover_i,isbn'}));
+  for(const candidateTitle of [...new Set([title,baseTitle])]){
+    const params=new URLSearchParams({title:candidateTitle,author,limit:'24',fields:'title,author_name,cover_i,isbn'});
+    openQueries.push(params);
+  }
   try{
-    const params=new URLSearchParams({limit:'12',fields:'title,author_name,cover_i,isbn'});
-    if(book.isbn)params.set('isbn',book.isbn);else{params.set('title',title);params.set('author',author)}
-    const r=await fetch(`https://openlibrary.org/search.json?${params}`);
-    if(r.ok){
+    for(const params of openQueries){
+      const r=await fetch(`https://openlibrary.org/search.json?${params}`);
+      if(!r.ok)continue;
       const data=await r.json();
       const ranked=(data.docs||[]).filter((d:any)=>d.cover_i).map((d:any)=>{
-        const dt=norm(String(d.title||'')),da=norm(String(d.author_name?.[0]||''));
-        let score=0;if(dt===titleKey)score+=100;else if(dt.includes(titleKey)||titleKey.includes(dt))score+=55;if(authorKey&&da===authorKey)score+=45;else if(authorKey&&(da.includes(authorKey)||authorKey.includes(da)))score+=25;return{d,score};
-      }).sort((a:any,b:any)=>b.score-a.score);
+        const ids=(d.isbn||[]).map((x:any)=>String(x||'').replace(/[^0-9X]/gi,''));
+        const exactIsbn=Boolean(cleanIsbn&&ids.includes(cleanIsbn));
+        const score=(exactIsbn?180:0)+titleScore(String(d.title||''))+authorScore((d.author_name||[]).join(' '));
+        return{d,score,exactIsbn};
+      }).filter((x:any)=>x.exactIsbn||x.score>=105).sort((a:any,b:any)=>b.score-a.score);
       if(ranked[0]?.d?.cover_i)return `https://covers.openlibrary.org/b/id/${ranked[0].d.cover_i}-L.jpg`;
     }
   }catch{}
+
   try{
+    const queryAuthors=[author];
+    if(author.includes(',')){
+      const parts=author.split(',').map(x=>x.trim()).filter(Boolean);
+      if(parts.length>=2)queryAuthors.push(`${parts.slice(1).join(' ')} ${parts[0]}`);
+    }
     const queries=[
       book.isbn?`isbn:${book.isbn}`:'',
-      [`intitle:${title}`,author?`inauthor:${author}`:''].filter(Boolean).join(' '),
-      [title,author].filter(Boolean).join(' '),
-      `"${title}" ${author}`,
+      ...[...new Set([title,baseTitle])].flatMap(t=>queryAuthors.flatMap(a=>[
+        [`intitle:${t}`,a?`inauthor:${a}`:''].filter(Boolean).join(' '),
+        [t,a].filter(Boolean).join(' '),
+        `"${t}" ${a}`.trim(),
+      ])),
     ].filter((q,i,a)=>q&&a.indexOf(q)===i);
     for(const q of queries){
       const r=await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=30&printType=books`);
       if(!r.ok)continue;
       const data=await r.json();
       const ranked=(data.items||[]).map((item:any)=>{
-        const v=item.volumeInfo||{},dt=norm(String(v.title||'')),authors=(v.authors||[]).map(String),da=norm(authors.join(' '));
+        const v=item.volumeInfo||{},authors=(v.authors||[]).map(String);
         const ids=(v.industryIdentifiers||[]).map((x:any)=>String(x.identifier||'').replace(/[^0-9X]/gi,''));
-        let score=0;
-        if(book.isbn&&ids.includes(String(book.isbn).replace(/[^0-9X]/gi,'')))score+=160;
-        if(dt===titleKey)score+=120;else if(dt.includes(titleKey)||titleKey.includes(dt))score+=70;
-        if(authorKey&&da.includes(authorKey))score+=55;
+        const exactIsbn=Boolean(cleanIsbn&&ids.includes(cleanIsbn));
+        let score=(exactIsbn?190:0)+titleScore(String(v.title||''))+authorScore(authors.join(' '));
         if(v.pageCount)score+=4;
         if(googleCover(v.imageLinks))score+=20;
-        return{v,score};
-      }).filter((x:any)=>googleCover(x.v.imageLinks)&&x.score>=60).sort((a:any,b:any)=>b.score-a.score);
+        return{v,score,exactIsbn};
+      }).filter((x:any)=>googleCover(x.v.imageLinks)&&(x.exactIsbn||x.score>=112)).sort((a:any,b:any)=>b.score-a.score);
       const cover=googleCover(ranked[0]?.v?.imageLinks);
       if(cover)return cover;
     }
@@ -207,14 +277,28 @@ const topicRules:[RegExp,string][]=[
   [/psycholog|mental|memory/i,'psychology & memory'],
   [/race|racism|immigration|diaspora/i,'race & belonging'],
   [/religion|faith/i,'faith & belief'],
-  [/coming of age|young adult|youth/i,'growing up'],
+  [/coming of age|young adult|youth|school|student/i,'growing up'],
+  [/magic|wizard|witch|fantasy|supernatural|ghost|monster|vampire/i,'magic & the unknown'],
+  [/good and evil|morality|moral|courage|bravery|choice/i,'choices & courage'],
   [/essay|essays/i,'ideas & observation'],
   [/memoir|biograph/i,'life & memory'],
 ];
 
+function discussionSentence(book:BookDecisionDetails,topics:string[],text:string){
+  if(topics.length>=2)return `Your group can dig into ${topics[0]} and ${topics[1]}, especially where different readers interpret the characters' choices or the world of the book differently.`;
+  if(topics.length===1)return `A natural conversation is ${topics[0]}: what the book seems to be saying about it, and where readers may disagree.`;
+  const source=`${book.title} ${book.description||''} ${text}`;
+  if(/fantasy|magic|wizard|witch|ghost|monster|vampire|supernatural/i.test(source))return 'There is plenty to discuss around how the book builds its world, who belongs in it, and how its characters respond to fear, power, loyalty, and the unknown.';
+  if(/school|child|children|young|student|coming of age/i.test(source))return 'The group can compare how the book handles growing up, belonging, friendship, and the choices its younger characters are asked to make.';
+  if(/mystery|thriller|crime|detective|murder/i.test(source))return 'Expect theories about motive, clues, credibility, and which details different readers noticed or interpreted differently.';
+  if(book.description)return 'The strongest discussion will come from comparing reactions to the characters’ choices, the book’s central tensions, and what different readers think it is ultimately trying to say.';
+  return '';
+}
+
 export function buildLocalDecisionGuide(book:BookDecisionDetails){
   const text=book.subjects.join(' · ');
-  const topics=topicRules.filter(([r])=>r.test(text)).map(([,label])=>label).slice(0,4);
+  const topicSource=`${text} · ${book.description||''} · ${book.title}`;
+  const topics=topicRules.filter(([r])=>r.test(topicSource)).map(([,label])=>label).filter((x,i,a)=>a.indexOf(x)===i).slice(0,4);
   const pages=book.pages;
   const hours=pages?Math.max(2,Math.round(pages/32)):undefined;
   const weekly=pages?Math.ceil(pages/4):undefined;
@@ -224,7 +308,7 @@ export function buildLocalDecisionGuide(book:BookDecisionDetails){
       : `A bigger month: around ${hours} hours total. Better if everyone is up for roughly ${weekly} pages a week.`
     : 'Page count varies by edition, so check the copy everyone is likely to use before setting the month.';
   const shape=/essay/i.test(text)?'essay collection':/memoir|biograph/i.test(text)?'memoir / nonfiction':/short stories/i.test(text)?'short-story collection':/poetry/i.test(text)?'poetry':/fiction|novel/i.test(text)?'novel':'book';
-  const discussion=topics.length?`Likely discussion topics: ${topics.join(', ')}.`:'The catalog does not expose enough subject data to predict discussion themes reliably.';
+  const discussion=discussionSentence(book,topics,text);
   const fit=/mystery|thriller|crime/i.test(text)?'Good if your group likes theories, motives, and comparing what everyone noticed.'
     :/essay/i.test(text)?'Good if your group wants a flexible month: people can discuss individual pieces even if they read at slightly different speeds.'
     :/memoir|biograph/i.test(text)?'Good if your group likes talking about choices, perspective, memory, and how a life gets narrated.'

@@ -73,7 +73,7 @@ export function StickerTray({onPick,onClose,onDone,onReset,saving=false}:{onPick
   const dismissKeyboard=()=>{const el=document.activeElement;if(el instanceof HTMLElement)el.blur()};
   return <aside className="sticker-tray" style={{'--keyboard-inset':`${keyboardInset}px`} as CSSProperties} role="region" aria-label="Sticker library">
     <div className="sticker-tray-head">
-      <div className="sticker-tray-titlebar"><h3>Stickers</h3><div><button type="button" className="secondary sticker-done" disabled={saving} onClick={()=>{dismissKeyboard();void onDone()}}>{saving?'Saving…':'Done'}</button><button type="button" className="icon-btn" onClick={()=>{dismissKeyboard();onClose()}} aria-label="Cancel sticker edits" title="Cancel"><X/></button></div></div>
+      <div className="sticker-tray-titlebar"><h3>Stickers</h3><div><button type="button" className="secondary sticker-done" disabled={saving} onClick={()=>{dismissKeyboard();void onDone()}}>{saving?'Saving…':'Save'}</button><button type="button" className="icon-btn" onClick={()=>{dismissKeyboard();onClose()}} aria-label="Cancel sticker edits" title="Cancel"><X/></button></div></div>
       <div className="sticker-tray-search"><Search/><input inputMode="search" enterKeyHint="search" placeholder="Search stickers" autoComplete="off" value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')(e.currentTarget as HTMLInputElement).blur()}}/></div>
     </div>
     <div className="sticker-category-row" aria-label="Sticker categories">{STICKER_CATEGORIES.map(c=><button type="button" key={c} className={category===c?'active':''} onClick={()=>setCategory(c)}>{c}</button>)}</div>

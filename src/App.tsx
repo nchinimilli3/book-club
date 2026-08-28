@@ -48,6 +48,7 @@ function Shell(){
   const[clubMenuOpen,setClubMenuOpen]=useState(false);
   const[notificationMenuOpen,setNotificationMenuOpen]=useState(false);
   const[clearingNotifications,setClearingNotifications]=useState(false);
+  useEffect(()=>{if(!clubMenuOpen&&!notificationMenuOpen)return;const close=(event:PointerEvent)=>{const target=event.target as Element;if(!target.closest('.club-switcher-wrap')&&!target.closest('.notification-menu-wrap')){setClubMenuOpen(false);setNotificationMenuOpen(false)}};document.addEventListener('pointerdown',close);return()=>document.removeEventListener('pointerdown',close)},[clubMenuOpen,notificationMenuOpen]);
   if(a.loading)return <div className="boot boot-loading"><b>BOOK CLUB</b><span>Opening your clubs…</span><div className="boot-progress" aria-hidden="true"><i/><i/><i/></div></div>;
   if(a.error)return <div className="boot"><b>Something went wrong.</b><span>{a.error}</span><button onClick={a.refresh}>Try again</button></div>;
 
@@ -85,7 +86,7 @@ function Shell(){
     <header className="global-header">
       <button className="brand" onClick={()=>navigate(currentPath)}>BOOK CLUB</button>
       <div className="club-switcher-wrap">
-        <button className="header-club-switcher" onClick={()=>setClubMenuOpen(v=>!v)} aria-expanded={clubMenuOpen}>
+        <button className="header-club-switcher" onClick={()=>{setClubMenuOpen(v=>!v);setNotificationMenuOpen(false)}} aria-expanded={clubMenuOpen}>
           <span>{a.workspace?.club?.name||'Your clubs'}</span><ChevronDown/>
         </button>
         {clubMenuOpen&&<div className="club-switcher-menu" role="menu">
@@ -100,7 +101,7 @@ function Shell(){
       </nav>
       <div className="global-actions">
         <div className="notification-menu-wrap">
-          <button className="icon-button notification-button" onClick={()=>setNotificationMenuOpen(v=>!v)} aria-expanded={notificationMenuOpen} aria-label={`Notifications${a.unreadNotifications?` · ${a.unreadNotifications} unread`:''}`}><Bell/>{a.unreadNotifications>0&&<span className="notification-badge">{a.unreadNotifications>9?'9+':a.unreadNotifications}</span>}</button>
+          <button className="icon-button notification-button" onClick={()=>{setNotificationMenuOpen(v=>!v);setClubMenuOpen(false)}} aria-expanded={notificationMenuOpen} aria-label={`Notifications${a.unreadNotifications?` · ${a.unreadNotifications} unread`:''}`}><Bell/>{a.unreadNotifications>0&&<span className="notification-badge">{a.unreadNotifications>9?'9+':a.unreadNotifications}</span>}</button>
           {notificationMenuOpen&&<div className="notification-quick-menu" role="menu"><div><b>{a.unreadNotifications?`${a.unreadNotifications} unread`:'You’re caught up'}</b><span>Notifications</span></div><button type="button" onClick={()=>{setNotificationMenuOpen(false);navigate('/notifications')}}>View notifications</button>{a.unreadNotifications>0&&<button type="button" className="mark-all-quick" disabled={clearingNotifications} onClick={()=>void clearNotifications()}>{clearingNotifications?'Marking…':'Mark all as read'}</button>}</div>}
         </div>
         <button className="profile-chip" onClick={()=>navigate('/me')} aria-label="Open my profile"><span>{a.profile?.avatarUrl?<img src={a.profile.avatarUrl} alt=""/>:a.profile?.displayName?.slice(0,1)||'R'}</span></button>
@@ -112,7 +113,7 @@ function Shell(){
     <nav className="mobile-nav" aria-label="Primary">
       <button onClick={()=>navigate(currentPath)}><BookOpen/><span>Club</span></button>
       <button onClick={()=>navigate('/search')}><Search/><span>Find</span></button>
-      <button onClick={()=>navigate('/me')}><span className="nav-avatar">{a.profile?.displayName?.slice(0,1)||'R'}</span><span>Me</span></button>
+      <button onClick={()=>navigate('/me')}><span className="nav-avatar">{a.profile?.avatarUrl?<img src={a.profile.avatarUrl} alt=""/>:a.profile?.displayName?.slice(0,1)||'R'}</span><span>Me</span></button>
     </nav>
   </div>;
 }

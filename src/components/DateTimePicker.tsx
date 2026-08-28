@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+import { currentTimeZoneShort } from '../lib/dateTime';
 
 const pad=(n:number)=>String(n).padStart(2,'0');
 const isoDate=(d:Date)=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -11,7 +12,7 @@ function parseDate(value:string){
 function pretty(value:string,includeTime:boolean){
   if(!value)return includeTime?'Choose date and time':'Choose a date';
   const d=new Date(includeTime?value:`${value}T12:00:00`);
-  return new Intl.DateTimeFormat('en-US',includeTime?{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}:{weekday:'short',month:'short',day:'numeric'}).format(d);
+  return new Intl.DateTimeFormat('en-US',includeTime?{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}:{weekday:'short',month:'short',day:'numeric'}).format(d);
 }
 
 export function DateTimePicker({value,onChange,includeTime=false,ariaLabel}:{value:string;onChange:(value:string)=>void;includeTime?:boolean;ariaLabel:string}){
@@ -33,7 +34,7 @@ export function DateTimePicker({value,onChange,includeTime=false,ariaLabel}:{val
       <header><button type="button" aria-label="Previous month" onClick={()=>setCursor(d=>new Date(d.getFullYear(),d.getMonth()-1,1))}><ChevronLeft/></button><b>{cursor.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</b><button type="button" aria-label="Next month" onClick={()=>setCursor(d=>new Date(d.getFullYear(),d.getMonth()+1,1))}><ChevronRight/></button></header>
       <div className="calendar-weekdays">{['S','M','T','W','T','F','S'].map((x,i)=><span key={`${x}-${i}`}>{x}</span>)}</div>
       <div className="calendar-days">{days.map(d=>{const key=isoDate(d),outside=d.getMonth()!==cursor.getMonth();return <button type="button" key={key} className={`${outside?'outside ':''}${key===today?'today ':''}${selectedDate===key?'selected':''}`} aria-pressed={selectedDate===key} onClick={()=>choose(d)}>{d.getDate()}</button>})}</div>
-      {includeTime&&<div className="calendar-time"><label>Time<input type="time" value={time} step="900" onChange={e=>onChange(`${selectedDate||isoDate(new Date())}T${e.target.value}`)}/></label><button type="button" className="primary" disabled={!selectedDate} onClick={()=>setOpen(false)}>Done</button></div>}
+      {includeTime&&<div className="calendar-time"><label>Time <span className="calendar-time-zone">{currentTimeZoneShort()}</span><input type="time" value={time} step="900" onChange={e=>onChange(`${selectedDate||isoDate(new Date())}T${e.target.value}`)}/></label><button type="button" className="primary" disabled={!selectedDate} onClick={()=>setOpen(false)}>Done</button></div>}
     </div>}
   </div>;
 }

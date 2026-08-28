@@ -20,3 +20,6 @@ YOUTUBE_API_KEY=
 
 # NYT Books API (server-side only)
 NYT_BOOKS_API_KEY=your_nyt_books_api_key
+
+# Protects bounded maintenance routes such as Goodreads cover backfill.
+MAINTENANCE_SECRET=replace-with-a-long-random-secret

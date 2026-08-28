@@ -22,6 +22,7 @@ type LibraryItem = Awaited<ReturnType<typeof getPersonalLibrary>>[number];
 export function ProfilePage(){
   const a=useApp(),{navigate:nav}=useRouter();
   const[items,setItems]=useState<LibraryItem[]>([]);
+  const[libraryLoading,setLibraryLoading]=useState(true);
   const[importing,setImporting]=useState(false);
   const[importOpen,setImportOpen]=useState(false);
   const[importFile,setImportFile]=useState<File|null>(null);
@@ -43,9 +44,24 @@ export function ProfilePage(){
   const[verifiedCovers,setVerifiedCovers]=useState<Set<string>>(()=>new Set());
   const[failedCovers,setFailedCovers]=useState<Set<string>>(()=>new Set());
   const coverRepairAttempts=useRef<Set<string>>(new Set());
+  const coverValidationAttempts=useRef<Set<string>>(new Set());
 
-  async function reload(){if(a.user)setItems(await getPersonalLibrary(a.user.id))}
-  useEffect(()=>{void reload()},[a.user?.id]);
+  async function reload(showLoading=false){
+    if(!a.user){setItems([]);setLibraryLoading(false);return}
+    if(showLoading)setLibraryLoading(true);
+    try{setItems(await getPersonalLibrary(a.user.id))}finally{if(showLoading)setLibraryLoading(false)}
+  }
+  useEffect(()=>{
+    let cancelled=false;
+    const userId=a.user?.id;
+    setLibraryLoading(true);
+    if(!userId){setItems([]);setLibraryLoading(false);return()=>{cancelled=true}};
+    void getPersonalLibrary(userId)
+      .then(next=>{if(!cancelled)setItems(next)})
+      .catch((error:any)=>{if(!cancelled){setItems([]);setNotice(error?.message||'Could not load your library.')}})
+      .finally(()=>{if(!cancelled)setLibraryLoading(false)});
+    return()=>{cancelled=true};
+  },[a.user?.id]);
   useEffect(()=>{
     if(stickering||!a.user)return;
     const cached=readProfileStyleCache(a.user.id);
@@ -87,17 +103,25 @@ export function ProfilePage(){
     if(!a.user||(!force&&coverRepairAttempts.current.has(item.id)))return;
     coverRepairAttempts.current.add(item.id);
     const cover=await findBestBookCover({title:item.book.title,author:item.book.author,isbn:item.book.isbn});
-    if(!cover)return;
-    await repairBookCover(item.book.id,cover);
+    if(!cover){setFailedCovers(old=>new Set(old).add(item.id));return}
+    const saved=await repairBookCover(item.book.id,cover);
+    if(!saved){setFailedCovers(old=>new Set(old).add(item.id));return}
     setItems(old=>old.map(x=>x.id===item.id?{...x,book:{...x.book,coverUrl:cover}}:x));
     setFailedCovers(old=>{const next=new Set(old);next.delete(item.id);return next});
+    setVerifiedCovers(old=>{const next=new Set(old);next.delete(item.id);return next});
+    coverValidationAttempts.current.delete(item.id);
   }
-  useEffect(()=>{if(!a.user||!items.length)return;items.filter(x=>!x.book.coverUrl).slice(0,80).forEach(item=>void recoverCover(item))},[a.user?.id,items.length]);
+  useEffect(()=>{
+    if(!a.user||!items.length)return;
+    const pending=items.filter(item=>!item.book.coverUrl&&!failedCovers.has(item.id)&&!coverRepairAttempts.current.has(item.id)).slice(0,8);
+    pending.forEach(item=>void recoverCover(item));
+  },[a.user?.id,items,failedCovers]);
   useEffect(()=>{
     if(!a.user||!items.length)return;
     let cancelled=false;
-    const pending=items.filter(item=>item.book.coverUrl&&!verifiedCovers.has(item.id)&&!failedCovers.has(item.id)).slice(0,60);
+    const pending=items.filter(item=>item.book.coverUrl&&!verifiedCovers.has(item.id)&&!failedCovers.has(item.id)&&!coverValidationAttempts.current.has(item.id)).slice(0,18);
     pending.forEach(item=>{
+      coverValidationAttempts.current.add(item.id);
       const img=new Image();
       img.onload=()=>{if(!cancelled)setVerifiedCovers(old=>new Set(old).add(item.id))};
       img.onerror=()=>{if(cancelled)return;setFailedCovers(old=>new Set(old).add(item.id));void recoverCover(item,true)};
@@ -194,34 +218,34 @@ export function ProfilePage(){
         {style.note&&<blockquote>{style.note}</blockquote>}
         <div className="profile-hero-actions"><button type="button" className="secondary" onClick={()=>setCustomizeOpen(true)}><Palette/> Customize</button><button type="button" className="secondary" onClick={openStickerEditor}><StickerIcon/> Stickers</button><button type="button" className="icon-button" onClick={()=>nav('/me/settings')} aria-label="Settings"><Settings/></button></div>
       </div>
-      <div className="profile-cover-collage" aria-label="A few books from your shelves">{collage.map((x,i)=><button type="button" key={x.book.id} style={{'--i':i} as any} onClick={()=>openBook(x)} aria-label={`Open ${x.book.title}`}><BookCover title={x.book.title} author={x.book.author} src={x.book.coverUrl}/></button>)}</div>
+      <div className={`profile-cover-collage${libraryLoading?' is-loading':''}`} aria-label="A few books from your shelves">{libraryLoading?Array.from({length:5},(_,i)=><span className="profile-cover-placeholder" key={i} style={{'--i':i} as any}/>):collage.map((x,i)=><button type="button" key={x.book.id} style={{'--i':i} as any} onClick={()=>openBook(x)} aria-label={`Open ${x.book.title}`}><BookCover title={x.book.title} author={x.book.author} src={x.book.coverUrl}/></button>)}</div>
       <StickerBoard stickers={style.stickers||[]} editing={stickering} onChange={stickers=>setStyle(s=>({...s,stickers}))}/>
     </section>
 
     {stickering&&<StickerTray onPick={addSticker} onClose={cancelStickerEditor} onDone={finishStickerEditor} onReset={()=>setStyle(s=>({...s,stickers:[]}))} saving={saving}/>} 
 
-    <section className="profile-overview">
-      <div className="profile-number"><b>{read.length}</b><span>Books read</span></div>
+    <section className={`profile-overview${libraryLoading?' profile-library-loading':''}`} aria-busy={libraryLoading}>
+      <div className="profile-number"><b>{libraryLoading?<span className="profile-stat-placeholder"/>:read.length}</b><span>Books read</span></div>
       <div className="profile-number"><b>{a.clubs.length}</b><span>Clubs</span></div>
-      <button type="button" className="profile-number profile-number-action" onClick={()=>setRatingOpen(true)}><b>{avg}</b><span>Average rating</span><small>Rate a book</small></button>
+      <button type="button" className="profile-number profile-number-action" disabled={libraryLoading} onClick={()=>setRatingOpen(true)}><b>{libraryLoading?<span className="profile-stat-placeholder"/>:avg}</b><span>Average rating</span>{!libraryLoading&&<small>Rate a book</small>}</button>
     </section>
 
-    <section className="reading-year-new">
-      <header><div><p>{YEAR}</p><h2>Your reading year</h2></div><b>{year.length} {year.length===1?'book':'books'}</b></header>
-      {year.length?<div className="year-strip">{year.slice(0,14).map((x,i)=><button type="button" key={x.id} style={{'--i':i} as any} onClick={()=>openBook(x)}><BookCover title={x.book.title} author={x.book.author} src={x.book.coverUrl}/><span>{x.book.title}</span></button>)}</div>:<p className="year-empty">Finish a book this year and it’ll start building here.</p>}
-      <div className="year-facts"><article><span>5★ books</span><b>{year.filter(x=>x.rating===5).length}</b></article><article><span>Pages tracked</span><b>{year.reduce((sum,x)=>sum+(x.book.pages||0),0).toLocaleString()}</b></article><article><span>Most recent</span><b>{year[0]?.book.title||'—'}</b></article></div>
+    <section className={`reading-year-new${libraryLoading?' profile-library-loading':''}`} aria-busy={libraryLoading}>
+      <header><div><p>{YEAR}</p><h2>Your reading year</h2></div><b>{libraryLoading?<span className="profile-line-placeholder short"/>:<>{year.length} {year.length===1?'book':'books'}</>}</b></header>
+      {libraryLoading?<div className="year-strip profile-year-loading" aria-hidden="true">{Array.from({length:5},(_,i)=><span className="profile-book-placeholder" key={i}/>)}</div>:year.length?<div className="year-strip">{year.slice(0,14).map((x,i)=><button type="button" key={x.id} style={{'--i':i} as any} onClick={()=>openBook(x)}><BookCover title={x.book.title} author={x.book.author} src={x.book.coverUrl}/><span>{x.book.title}</span></button>)}</div>:<p className="year-empty">Finish a book this year and it’ll start building here.</p>}
+      <div className="year-facts"><article><span>5★ books</span><b>{libraryLoading?<span className="profile-line-placeholder"/>:year.filter(x=>x.rating===5).length}</b></article><article><span>Pages tracked</span><b>{libraryLoading?<span className="profile-line-placeholder"/>:year.reduce((sum,x)=>sum+(x.book.pages||0),0).toLocaleString()}</b></article><article><span>Most recent</span><b>{libraryLoading?<span className="profile-line-placeholder wide"/>:year[0]?.book.title||'—'}</b></article></div>
     </section>
 
-    <Shelf title="Favorites & 5-star reads" items={shelfPreview(favoriteReads,favoriteReads.length)} total={favoriteReads.length} empty="No favorites or 5-star reads yet." onAdd={()=>findForProfile('want_to_read',true)} onOpen={openBook} onEdit={setEditItem}/>
-    {current.length>0&&<Shelf title="Currently reading" items={shelfPreview(current,current.length)} total={current.length} empty="" onAdd={()=>findForProfile('currently_reading')} onOpen={openBook} onEdit={setEditItem}/>}
-    <Shelf title="Books read" items={shelfPreview(read,read.length)} total={read.length} empty="No finished books yet." onAdd={()=>findForProfile('read')} onOpen={openBook} onEdit={setEditItem}/>
-    <Shelf title="Want to read" items={shelfPreview(want,want.length)} total={want.length} empty="Nothing saved yet." onAdd={()=>findForProfile('want_to_read')} onOpen={openBook} onEdit={setEditItem}/>
+    {libraryLoading?<ProfileShelfLoading title="Favorites & 5-star reads"/>:<Shelf title="Favorites & 5-star reads" items={shelfPreview(favoriteReads,favoriteReads.length)} total={favoriteReads.length} empty="No favorites or 5-star reads yet." onAdd={()=>findForProfile('want_to_read',true)} onOpen={openBook} onEdit={setEditItem}/>}
+    {libraryLoading?<ProfileShelfLoading title="Currently reading"/>:current.length>0&&<Shelf title="Currently reading" items={shelfPreview(current,current.length)} total={current.length} empty="" onAdd={()=>findForProfile('currently_reading')} onOpen={openBook} onEdit={setEditItem}/>}
+    {libraryLoading?<ProfileShelfLoading title="Books read"/>:<Shelf title="Books read" items={shelfPreview(read,read.length)} total={read.length} empty="No finished books yet." onAdd={()=>findForProfile('read')} onOpen={openBook} onEdit={setEditItem}/>}
+    {libraryLoading?<ProfileShelfLoading title="Want to read"/>:<Shelf title="Want to read" items={shelfPreview(want,want.length)} total={want.length} empty="Nothing saved yet." onAdd={()=>findForProfile('want_to_read')} onOpen={openBook} onEdit={setEditItem}/>}
 
-    <section className="profile-library-actions"><div className="profile-library-copy"><h2>Add to your reading life</h2><p>Search one book, or bring over the Goodreads shelves you already built.</p><div className="profile-action-buttons"><button type="button" className="primary" onClick={()=>findForProfile('want_to_read')}><Search/> Search books <ArrowRight/></button><button type="button" className="secondary" onClick={openGoodreadsImport}><Upload/> {hasGoodreads?'Update from Goodreads':'Import from Goodreads'}</button></div></div><div className="profile-library-graphic goodreads-import-graphic" aria-hidden="true"><span className="goodreads-poster-mark">G</span><b>Goodreads import</b><small>CSV shelves become your Book Club library</small></div></section>
+    {libraryLoading?<ProfileLibraryActionsLoading/>:<section className="profile-library-actions"><div className="profile-library-copy"><h2>Add to your reading life</h2><p>Search one book, or bring over the Goodreads shelves you already built.</p><div className="profile-action-buttons"><button type="button" className="primary" onClick={()=>findForProfile('want_to_read')}><Search/> Search books <ArrowRight/></button><button type="button" className="secondary" onClick={openGoodreadsImport}><Upload/> {hasGoodreads?'Update from Goodreads':'Import from Goodreads'}</button></div></div><div className="profile-library-graphic goodreads-import-graphic"><img src="/profile/goodreads-reading-coffee.png" alt="Open books surrounding a cup of coffee"/><div className="goodreads-import-caption"><span className="goodreads-poster-mark" aria-hidden="true">G</span><div><b>Goodreads import</b><small>CSV shelves become your Book Club library</small></div></div></div></section>}
 
     {(notice||syncError)&&<div className={`import-notice${syncError?' sync-warning':''}`} role="status"><span>{notice}{syncError&&<> <b>{syncError}</b></>}</span>{syncError&&<button type="button" className="secondary" disabled={saving} onClick={()=>void retryProfileStyleSync()}>{saving?'Syncing…':'Retry cloud sync'}</button>}</div>}
 
-    {!items.length&&<section className="import-panel goodreads-helper">
+    {!libraryLoading&&!items.length&&<section className="import-panel goodreads-helper">
       <div className="goodreads-copy"><span className="goodreads-mark">G</span><div><p className="goodreads-kicker">Start with your history</p><h2>Bring your books from Goodreads</h2><p>Your shelves and ratings can fill this profile in one go. Nothing is added to a club.</p></div></div>
       <div className="goodreads-empty-actions"><button type="button" className="primary" onClick={openGoodreadsImport}><Upload/> Import Goodreads library</button><button type="button" className="quiet-action" onClick={()=>findForProfile('want_to_read')}>I’ll add books myself</button></div>
     </section>}
@@ -267,6 +291,15 @@ export function ProfilePage(){
       </div>
     </Modal>
   </div>
+}
+
+
+function ProfileLibraryActionsLoading(){
+  return <section className="profile-library-actions profile-library-actions-loading" aria-busy="true" aria-label="Loading library actions"><div className="profile-library-copy" aria-hidden="true"><span className="profile-line-placeholder wide"/><span className="profile-copy-placeholder"/><span className="profile-copy-placeholder short"/><div className="profile-action-placeholder-row"><span/><span/></div></div><div className="profile-library-graphic profile-library-graphic-placeholder" aria-hidden="true"/></section>
+}
+
+function ProfileShelfLoading({title}:{title:string}){
+  return <section className="profile-shelf profile-shelf-loading" aria-busy="true" aria-label={`Loading ${title}`}><header><div><h2>{title}</h2><span className="profile-line-placeholder short"/></div></header><div className="profile-shelf-loading-books" aria-hidden="true">{Array.from({length:5},(_,i)=><span className="profile-book-placeholder" key={i}/>)}</div></section>
 }
 
 function Shelf({title,items,total,empty,onAdd,onOpen,onEdit}:{title:string;items:LibraryItem[];total:number;empty:string;onAdd:()=>void;onOpen:(item:LibraryItem)=>void;onEdit:(item:LibraryItem)=>void}){

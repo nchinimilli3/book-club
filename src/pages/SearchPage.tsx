@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Heart, Plus, Search, X } from 'lucide-react';
+import { Heart, Plus, Search, X } from 'lucide-react';
 import { BookCover } from '../components/BookCover';
 import { BookSkeleton } from '../components/Skeleton';
 import { BookRail } from '../components/BookRail';
@@ -9,7 +9,7 @@ import { SelectMenu } from '../components/SelectMenu';
 import { buildLocalDecisionGuide, getBookDecisionDetails, searchBooks, type BookDecisionDetails, type BookSearchResult } from '../lib/books';
 import { getBookDiscovery, getDecisionGuide, type BookDiscoveryResponse, type DecisionGuide } from '../lib/api';
 import { catalogToSearchResult, discoveryToCatalog, type CatalogBook } from '../lib/catalog';
-import { saveBookToClub, savePersonalBook } from '../lib/data';
+import { getPersonalLibrary, saveBookToClub, savePersonalBook } from '../lib/data';
 import { useApp } from '../lib/AppContext';
 import { useRouter } from '../lib/router';
 
@@ -21,9 +21,30 @@ const SCROLL_KEY='bookclub:search-scroll';
 type ReturnTarget={path:string;label?:string;scrollY?:number};
 
 const shelfLabel=(shelf:string)=>shelf==='want_to_read'?'Want to read':shelf==='currently_reading'?'Currently reading':'Books read';
+const sameBook=(a?:BookSearchResult,b?:{title?:string;isbn?:string})=>!!a&&!!b&&((a.isbn&&b.isbn&&a.isbn===b.isbn)||a.title.trim().toLowerCase()===b.title?.trim().toLowerCase());
 function topicTone(topic:string){let n=0;for(const c of topic)n=(n+c.charCodeAt(0))%5;return `topic-tone-${n+1}`}
 function usefulGuideText(value?:string){const text=(value||'').trim();if(!text)return undefined;return /this reads as a book|catalog metadata|catalog .*subject data|predict discussion themes|thematic range|enough .*support a conversation/i.test(text)?undefined:text}
-function cleanSubject(value:string){return value.replace(/--.*$/,'').replace(/ fiction$/i,'').trim()}
+function cleanSubject(value:string){return value.replace(/--.*$/,'').replace(/ fiction$/i,'').replace(/^genre\s*:\s*/i,'').replace(/^categor(?:y|ies)\s*:\s*/i,'').trim()}
+function displayGenres(subjects:string[]=[]){
+  const source=subjects.map(cleanSubject).filter(Boolean);
+  const text=source.join(' · ');
+  const candidates:[RegExp,string][]=[
+    [/fantasy|magic|wizard|witch|supernatural|ghost|monster|vampire/i,'Fantasy'],
+    [/mystery|detective|crime/i,'Mystery'],
+    [/thriller|suspense/i,'Thriller'],
+    [/romance|love stor/i,'Romance'],
+    [/science fiction|sci fi|dystop/i,'Science fiction'],
+    [/historical/i,'Historical fiction'],
+    [/memoir|autobiograph/i,'Memoir'],
+    [/biograph/i,'Biography'],
+    [/young adult|juvenile|children|childrens/i,"Children's / YA"],
+    [/poetry|poems/i,'Poetry'],
+    [/essay/i,'Essays'],
+    [/horror/i,'Horror'],
+  ];
+  const inferred=candidates.filter(([pattern])=>pattern.test(text)).map(([,label])=>label);
+  return [...new Set(inferred)].slice(0,2);
+}
 
 export function SearchPage(){
   const a=useApp(),{navigate:nav}=useRouter();
@@ -31,6 +52,7 @@ export function SearchPage(){
   const[results,setResults]=useState<BookSearchResult[]>([]),[loading,setLoading]=useState(false);
   const[detail,setDetail]=useState<BookSearchResult|null>(null),[details,setDetails]=useState<BookDecisionDetails|null>(null),[guide,setGuide]=useState<DecisionGuide|null>(null),[guideLoading,setGuideLoading]=useState(false);
   const[busy,setBusy]=useState<'club'|'personal'|'quick'|null>(null),[notice,setNotice]=useState('');
+  const[personalSaved,setPersonalSaved]=useState(false),[clubSaved,setClubSaved]=useState(false);
   const[personalShelf,setPersonalShelf]=useState('want_to_read'),[favorite,setFavorite]=useState(false),[profileReturn,setProfileReturn]=useState(false);
   const[quickAdd,setQuickAdd]=useState<BookSearchResult|null>(null);
   const[discovery,setDiscovery]=useState<BookDiscoveryResponse>({nyt:[],apple:[],nytConfigured:false,nytStatus:'not_configured',apiReachable:true}),[discoveryLoading,setDiscoveryLoading]=useState(true);
@@ -65,13 +87,30 @@ export function SearchPage(){
     return()=>{cancelled=true}
   },[detail?.key]);
 
+  useEffect(()=>{
+    if(!detail||!a.user){setPersonalSaved(false);return}
+    let cancelled=false;
+    getPersonalLibrary(a.user.id).then(items=>{
+      if(cancelled)return;
+      const saved=items.find(item=>sameBook(detail,item.book));
+      setPersonalSaved(!!saved);
+      if(saved){setPersonalShelf(saved.shelf);setFavorite(saved.isFavorite)}
+    }).catch(()=>undefined);
+    return()=>{cancelled=true};
+  },[detail?.key,a.user?.id]);
+
+  useEffect(()=>{
+    const inShortlist=!!detail&&(!!a.workspace?.ideaBooks.some(item=>sameBook(detail,item.book))||sameBook(detail,a.workspace?.currentBook?.book));
+    setClubSaved(inShortlist);
+  },[detail?.key,a.workspace?.ideaBooks,a.workspace?.currentBook?.id]);
+
   const local=useMemo(()=>details?buildLocalDecisionGuide(details):null,[details]);
   function openDetail(book:BookSearchResult){setQuickAdd(null);sessionStorage.setItem(SCROLL_KEY,String(scrollY));sessionStorage.setItem(OPEN_BOOK_KEY,JSON.stringify(book));history.pushState({bookPreview:true},'',location.href);pushedRef.current=true;setDetail(book)}
   function exitSearch(){const target=returnTarget;sessionStorage.removeItem(OPEN_BOOK_KEY);sessionStorage.removeItem(PROFILE_TARGET_KEY);sessionStorage.removeItem(SEARCH_RETURN_KEY);nav(target?.path||(a.activeClubId?`/clubs/${a.activeClubId}`:'/clubs'),true);if(typeof target?.scrollY==='number')requestAnimationFrame(()=>requestAnimationFrame(()=>scrollTo({top:target.scrollY,behavior:'instant' as ScrollBehavior})))}
   function closeDetail(){sessionStorage.removeItem(OPEN_BOOK_KEY);if(pushedRef.current)history.back();else if(returnTarget?.path)exitSearch();else{setDetail(null);requestAnimationFrame(()=>scrollTo(0,Number(sessionStorage.getItem(SCROLL_KEY)||0)))}}
 
-  async function suggestToClub(){if(!detail||!a.activeClubId)return;setBusy('club');setNotice('');try{const result=await saveBookToClub(a.activeClubId,{...detail,description:details?.description});setNotice(result.alreadySaved?`Already on ${a.workspace?.club.name||'this club'}’s table.`:`Suggested to ${a.workspace?.club.name||'your club'}.`);void a.refresh()}catch(err:any){setNotice(err?.message||'Could not suggest this book.')}finally{setBusy(null)}}
-  async function saveForMe(){if(!detail||!a.user)return;setBusy('personal');setNotice('');try{await savePersonalBook(a.user.id,{...detail,description:details?.description},{shelf:personalShelf,isFavorite:favorite});setNotice(`Saved to ${shelfLabel(personalShelf)}${favorite?' and Favorites':''}.`);if(profileReturn)exitSearch()}catch(err:any){setNotice(err?.message||'Could not save this book.')}finally{setBusy(null)}}
+  async function suggestToClub(){if(!detail||!a.activeClubId)return;setBusy('club');setNotice('');try{const result=await saveBookToClub(a.activeClubId,{...detail,description:details?.description});setClubSaved(true);setNotice(result.alreadySaved?`Already on ${a.workspace?.club.name||'this club'}’s table.`:`Suggested to ${a.workspace?.club.name||'your club'}.`);void a.refresh()}catch(err:any){setNotice(err?.message||'Could not suggest this book.')}finally{setBusy(null)}}
+  async function saveForMe(){if(!detail||!a.user)return;setBusy('personal');setNotice('');try{await savePersonalBook(a.user.id,{...detail,description:details?.description},{shelf:personalShelf,isFavorite:favorite});setPersonalSaved(true);setNotice(`Saved to ${shelfLabel(personalShelf)}${favorite?' and Favorites':''}.`);if(profileReturn)exitSearch()}catch(err:any){setNotice(err?.message||'Could not save this book.')}finally{setBusy(null)}}
   async function quickSave(book:BookSearchResult,target:'club'|'want_to_read'|'currently_reading'|'read'){
     setBusy('quick');setNotice('');
     try{
@@ -94,15 +133,15 @@ export function SearchPage(){
 
 
   if(detail)return <div className="page book-preview">
-    <div className="book-preview-nav"><button type="button" className="back-link" onClick={closeDetail}><ArrowLeft/> {pushedRef.current?'Back to search':returnTarget?.label||'Back'}</button>{returnTarget&&<button type="button" className="preview-exit" onClick={exitSearch} aria-label={`Close and return to ${returnTarget.label||'previous page'}`}><X/></button>}</div>
+    <div className="book-preview-nav"><button type="button" className="preview-exit" onClick={closeDetail} aria-label="Close book preview"><X/></button></div>
     <section className="book-choice-layout">
-      <aside className="preview-cover-column"><BookCover className="preview-cover" title={detail.title} author={detail.author} src={detail.cover}/><div className="preview-metadata book-facts"><div><small>Published</small><b>{detail.year||'Varies'}</b></div>{details?.pages&&<div><small>Length</small><b>{details.pages} pages</b></div>}{details?.subjects?.slice(0,2).map(subject=><div key={subject}><small>Genre</small><b>{cleanSubject(subject)}</b></div>)}</div></aside>
+      <aside className="preview-cover-column"><BookCover className="preview-cover" title={detail.title} author={detail.author} src={detail.cover}/><div className="preview-metadata book-facts"><div><small>Published</small><b>{detail.year||'Varies'}</b></div>{details?.pages&&<div><small>Length</small><b>{details.pages} pages</b></div>}{displayGenres(details?.subjects).map(genre=><div key={genre}><small>Genre</small><b>{genre}</b></div>)}</div></aside>
       <div className="preview-copy">
         <div className="preview-heading"><h1>{detail.title}</h1><p className="author">{detail.author}</p></div>
-        <section className="decision-guide"><header><h2>Would this work for your club?</h2></header>{guideLoading&&!local?<div className="decision-loading">Checking this book…</div>:<>{usefulGuideText(guide?.whatItsAbout)&&<article className="decision-about"><h3>What it’s about</h3><p>{usefulGuideText(guide?.whatItsAbout)}</p></article>}{local&&<div className="decision-grid"><article className="decision-time"><h3>Time commitment</h3><p>{local.commitment}</p></article><article className="decision-fit"><h3>Why it could work</h3><p>{usefulGuideText(guide?.whyItWorks)||local.fit}</p></article>{(guide?.conversation?.length||local.topics.length>0)&&<article className="decision-talk"><h3>Likely discussion</h3><p>{usefulGuideText(guide?.conversation?.join(' · '))||local.discussion}</p></article>}{usefulGuideText(guide?.headsUp)&&<article className="decision-headsup"><h3>Worth knowing</h3><p>{usefulGuideText(guide?.headsUp)}</p></article>}</div>}<div className="decision-topics">{(guide?.vibe||local?.topics||[]).slice(0,5).map(x=><span className={topicTone(x)} key={x}>{x}</span>)}</div></>}</section>
+        <section className="decision-guide"><header><h2>Would this work for your club?</h2></header>{guideLoading&&!local?<div className="decision-loading">Checking this book…</div>:<>{usefulGuideText(guide?.whatItsAbout)&&<article className="decision-about"><h3>What it’s about</h3><p>{usefulGuideText(guide?.whatItsAbout)}</p></article>}{local&&<div className="decision-grid"><article className="decision-time"><h3>Time commitment</h3><p>{local.commitment}</p></article><article className="decision-fit"><h3>Why it could work</h3><p>{usefulGuideText(guide?.whyItWorks)||local.fit}</p></article>{(usefulGuideText(guide?.conversation?.join(' · '))||local.discussion)&&<article className="decision-talk"><h3>Likely discussion</h3><p>{usefulGuideText(guide?.conversation?.join(' · '))||local.discussion}</p></article>}{usefulGuideText(guide?.headsUp)&&<article className="decision-headsup"><h3>Worth knowing</h3><p>{usefulGuideText(guide?.headsUp)}</p></article>}</div>}<div className="decision-topics">{(guide?.vibe||local?.topics||[]).slice(0,5).map(x=><span className={topicTone(x)} key={x}>{x}</span>)}</div></>}</section>
         <div className="relationship-actions preview-save-actions">
-          <section className="preview-personal-save"><label className="preview-shelf-field"><span>Save to</span><SelectMenu className="preview-shelf-menu" ariaLabel="Personal shelf" value={personalShelf} options={[{value:'want_to_read',label:'Want to read'},{value:'currently_reading',label:'Currently reading'},{value:'read',label:'Books read'}]} onChange={setPersonalShelf}/></label><div className="preview-save-row"><button type="button" className={`favorite-toggle ${favorite?'selected':''}`} onClick={()=>setFavorite(v=>!v)} aria-pressed={favorite}><Heart fill={favorite?'currentColor':'none'}/> {favorite?'Favorite':'Mark favorite'}</button><button type="button" className="primary preview-personal-save-button" onClick={saveForMe} disabled={!a.user||busy!==null}>{busy==='personal'?'Saving…':`Save to ${shelfLabel(personalShelf)}`}</button></div></section>
-          <section className="preview-club-save"><button type="button" className="primary" onClick={suggestToClub} disabled={!a.activeClubId||busy!==null}>{busy==='club'?'Adding…':`Add to ${a.workspace?.club.name||'club'} shortlist`}</button></section>
+          <section className="preview-personal-save"><label className="preview-shelf-field"><span>Save to</span><SelectMenu className="preview-shelf-menu" ariaLabel="Personal shelf" value={personalShelf} options={[{value:'want_to_read',label:'Want to read'},{value:'currently_reading',label:'Currently reading'},{value:'read',label:'Books read'}]} onChange={value=>{setPersonalShelf(value);setPersonalSaved(false)}}/></label><div className="preview-save-row"><button type="button" className={`favorite-toggle ${favorite?'selected':''}`} onClick={()=>setFavorite(v=>!v)} aria-pressed={favorite}><Heart fill={favorite?'currentColor':'none'}/> {favorite?'Favorite':'Mark favorite'}</button><button type="button" className="primary preview-personal-save-button" onClick={saveForMe} disabled={!a.user||busy!==null}>{busy==='personal'?'Saving…':personalSaved?`Saved to ${shelfLabel(personalShelf)}`:`Save to ${shelfLabel(personalShelf)}`}</button></div></section>
+          <section className="preview-club-save"><button type="button" className="primary" onClick={suggestToClub} disabled={!a.activeClubId||busy!==null}>{busy==='club'?'Adding…':clubSaved?`In ${a.workspace?.club.name||'club'} shortlist`:`Add to ${a.workspace?.club.name||'club'} shortlist`}</button></section>
         </div>
         {notice&&<FeedbackMessage>{notice}</FeedbackMessage>}
       </div>

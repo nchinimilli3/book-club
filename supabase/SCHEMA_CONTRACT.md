@@ -1,16 +1,16 @@
 # BOOK CLUB production backend contract
 
-`supabase/migrations/009_FINAL_RELEASE.sql` is the release contract. Older numbered migrations are historical/context only; do not compose a new production database by guessing from them. For the existing project, run 009 once and use its final `book_club_release_check()` report as the release gate.
+`supabase/migrations/009_FINAL_RELEASE.sql` is the base release contract and `supabase/migrations/012_launch_remaining_five.sql` is the launch extension for the final five production fixes. Older numbered migrations are historical/context only; do not compose a new production database by guessing from them. For the existing project, apply 009 and then 012, then run both `book_club_release_check()` and `book_club_launch_012_check()` as release gates.
 
 ## Private product tables
 
 - `profiles` — account-facing profile basics + `profile_style`
-- `user_preferences` — active club, notification mode, and current recommendation mood/avoidances
+- `user_preferences` — active club, notification mode, recommendation mood/avoidances, and browser-detected IANA timezone
 - `clubs`, `club_members`, `club_invites` — private club identity, membership, revocable/expiring invites
 - `books`, `club_books` — catalog records + per-club lifecycle/idea attribution
 - `ballots`, `nominations`, `votes`, `ballot_preferences` — private voting with broad-support preferences plus legacy single-choice compatibility
 - `book_checkins` — acquisition / reading format
-- `reading_progress`, `reading_checkpoints` — spoiler boundary + suggested plan
+- `reading_progress`, `reading_checkpoints`, `checkpoint_checkins` — spoiler boundary, suggested plan, and persisted meeting checkpoint check-ins
 - `posts`, `replies`, `reactions` — spoiler-aware async discussion
 - `private_notes`, `saved_quotes` — private reader margins
 - `meeting_questions` — saved meeting agenda items
@@ -20,7 +20,7 @@
 - `book_context_items`, `context_sources` — cached source-backed Reader's Companion data
 - `notifications` — action inbox
 - `product_events`, `client_errors` — first-party release instrumentation
-- `calendar_connections`, `calendar_event_links` — server-only encrypted Google Calendar connection state; no browser grants
+- `calendar_connections`, `calendar_event_links`, `calendar_plan_syncs`, `calendar_plan_event_links` — server-only encrypted Google Calendar connection and idempotent meeting/reading-plan event state; no browser grants
 
 ## Canonical frontend RPCs
 
@@ -28,15 +28,18 @@
 - `create_club(text,text,text)`
 - `join_club_by_invite(text)`
 - `create_or_get_club_invite(uuid)`
-- `start_ballot_from_ideas(uuid)`
+- `start_ballot_from_ideas(uuid)` (compatibility wrapper)
+- `start_ballot_from_ideas(uuid,timestamptz)` (launch UI deadline-aware form)
 - `cast_ballot_vote(uuid)`
 - `set_ballot_preference(uuid,text)`
 - `remove_club_idea(uuid)`
 - `finalize_ballot(uuid)`
+- `decide_tied_ballot(uuid,uuid)`
 - `mark_book_acquired(uuid,text,text)`
 - `start_club_book(uuid,date,integer,integer)`
 - `generate_reading_checkpoints(uuid,integer)`
 - `update_my_progress(uuid,integer,integer,numeric,text)`
+- `set_checkpoint_checkin(uuid,text)`
 - `save_meeting_options(uuid,uuid,timestamptz[])`
 - `set_meeting_option_response(uuid,boolean)`
 - `save_club_meeting(uuid,uuid,uuid,timestamptz,text,text)`
@@ -59,10 +62,11 @@
 - `transfer_club_ownership(uuid,uuid)`
 - `track_product_event(text,jsonb,uuid)`
 - `log_client_error(text,text,jsonb)`
+- `set_my_timezone(text)`
 
 ## Server-only Worker RPC / tables
 
-The Cloudflare Worker authenticates the user with the Supabase public key, then uses the user's JWT for `get_club_taste_profile(uuid)`. The Supabase service-role secret is Worker-only and is used for encrypted Google Calendar connection/event-link rows. It must never be exposed in `VITE_*` variables or frontend source.
+The Cloudflare Worker authenticates the user with the Supabase public key, then uses the user's JWT for `get_club_taste_profile(uuid)`. The Supabase service-role secret is Worker-only and is used for encrypted Google Calendar connection/event-link rows and `process_ballot_automation()`. It must never be exposed in `VITE_*` variables or frontend source.
 
 ## Security boundary
 
@@ -70,9 +74,9 @@ All club/social tables have RLS. `anon` is explicitly revoked from private CRUD 
 
 ## Realtime
 
-Production realtime publication includes posts, replies, reactions, reading progress, meeting RSVPs, meetings, meeting options, meeting availability, meeting agenda items, club books, ratings, ballots, ballot preferences and notifications.
+Production realtime publication includes posts, replies, reactions, reading progress, checkpoint check-ins, meeting RSVPs, meetings, meeting options, meeting availability, meeting agenda items, club books, ratings, ballots, ballot preferences and notifications.
 
 ## Release gate
 
-After running `009_FINAL_RELEASE.sql`, **every row returned by `book_club_release_check()` must say `PASS`** before inviting real users. A FAIL is a release blocker, not something the frontend should silently fall back around.
+After applying `009_FINAL_RELEASE.sql` and `012_launch_remaining_five.sql`, **every row returned by both `book_club_release_check()` and `book_club_launch_012_check()` must say `PASS`** before inviting real users. A FAIL is a release blocker, not something the frontend should silently fall back around.
 

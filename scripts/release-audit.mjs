@@ -23,9 +23,9 @@ for(const f of files.filter(x=>x.endsWith('.tsx'))){
   ts.forEachChild(n,visit)
  }visit(sf)
 }
-const data=fs.readFileSync(path.join(src,'lib/data.ts'),'utf8');const sql=fs.readFileSync(path.join(root,'supabase/migrations/009_FINAL_RELEASE.sql'),'utf8');
-const rpcs=[...data.matchAll(/\.rpc\('([^']+)'/g)].map(m=>m[1]);for(const rpc of new Set(rpcs)){if(!new RegExp(`function\\s+public\\.${rpc.replace(/[.*+?^${}()|[\\]\\]/g,'\\$&')}\\s*\\(`,'i').test(sql))failures.push(`RPC used by frontend missing from 009: ${rpc}`)}
+const data=fs.readFileSync(path.join(src,'lib/data.ts'),'utf8');const migrationFiles=['009_FINAL_RELEASE.sql','012_launch_remaining_five.sql'];const sql=migrationFiles.map(name=>fs.readFileSync(path.join(root,'supabase/migrations',name),'utf8')).join('\n');
+const rpcs=[...data.matchAll(/\.rpc\('([^']+)'/g)].map(m=>m[1]);for(const rpc of new Set(rpcs)){if(!new RegExp(`function\\s+public\\.${rpc.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\s*\\(`,'i').test(sql))failures.push(`RPC used by frontend missing from release migrations: ${rpc}`)}
 const stickerFile=fs.readFileSync(path.join(src,'lib/stickers.tsx'),'utf8');for(const m of stickerFile.matchAll(/src:\s*['"]([^'"]+)['"]/g)){if(!m[1].startsWith('/'))continue;const p=path.join(root,'public',m[1].replace(/^\//,''));if(!fs.existsSync(p))failures.push(`missing sticker asset: ${m[1]}`)}
-const dollars=(sql.match(/\$\$/g)||[]).length;if(dollars%2)failures.push('009 has unbalanced $$ delimiters');
-const begin=(sql.match(/\bbegin;/gi)||[]).length,commit=(sql.match(/\bcommit;/gi)||[]).length;if(commit!==1)warnings.push(`009 contains ${commit} commit statements`);
+for(const name of migrationFiles){const migration=fs.readFileSync(path.join(root,'supabase/migrations',name),'utf8');const dollars=(migration.match(/\$\$/g)||[]).length;if(dollars%2)failures.push(`${name} has unbalanced $$ delimiters`)}
+const baseSql=fs.readFileSync(path.join(root,'supabase/migrations/009_FINAL_RELEASE.sql'),'utf8');const commit=(baseSql.match(/\bcommit;/gi)||[]).length;if(commit!==1)warnings.push(`009 contains ${commit} commit statements`);
 console.log(`Release audit: ${files.length} source files, ${new Set(rpcs).size} RPC contracts.`);for(const w of warnings)console.log('WARN',w);if(failures.length){for(const x of failures)console.error('FAIL',x);process.exit(1)}console.log('PASS static button/route/runtime/RPC/sticker checks');

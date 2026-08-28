@@ -1,0 +1,54 @@
+/* components/shared.css — generated from the canonical 2026-08 preservation cascade. */
+.state-line{font-size:18px;margin:24px 0}
+
+@media(max-width:720px){.club-top-actions span{display:none}
+}
+
+.skeleton-discussion{display:grid;gap:18px;padding:20px 0}
+
+.skeleton-discussion>div{display:grid;grid-template-columns:42px 1fr;gap:12px}
+
+.skeleton-discussion i{width:42px;height:42px;border-radius:50%;background:#e2dad2}
+
+.skeleton-discussion span{display:grid;gap:8px}
+
+.skeleton-discussion span:before{content:'';height:11px;border-radius:8px;background:#e2dad2}
+
+.skeleton-discussion span:after{content:'';height:11px;border-radius:8px;background:#e2dad2;width:68%}
+
+.club-top-actions svg{width:17px}
+
+@media(max-width:430px){.club-top-actions{gap:0}}
+
+.quiet-danger{font-weight:700;min-height:44px;margin-top:3px;color:var(--muted);background:none;border:0;text-decoration:underline;text-underline-offset:3px}
+
+.club-top-actions{align-items:center;flex-wrap:wrap;justify-content:flex-end;display:flex;gap:4px}
+
+.plan-counts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+.plan-counts label{margin-top:8px}
+
+.plan-counts label>span{font-size:11px;color:#5b7653;margin-left:4px;font-weight:650}
+
+@media(max-width:720px){.plan-counts{grid-template-columns:1fr}
+}
+
+.open-discussion-label{font-size:14px;font-weight:850;color:var(--ink)}
+
+.compact-empty p{max-width:48ch}
+
+@media(max-width:720px){
+  .club-top-actions{position:absolute;right:12px;top:12px}
+}
+
+.production-book-rail .book-skeleton-grid{margin-top:0}
+
+.progress-percent-value{font-variant-numeric:tabular-nums}
+
+.member-line img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  border-radius:inherit;
+  display:block;
+}

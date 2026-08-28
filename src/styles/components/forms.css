@@ -1,0 +1,24 @@
+/* components/forms.css — generated from the canonical 2026-08 preservation cascade. */
+input{font:inherit;color:inherit}.palette-row{display:flex;gap:10px}.swatch{width:42px;height:42px;border-radius:50%;border:3px solid transparent;background:var(--rose)}.swatch.olive{background:var(--olive)}.swatch.gold{background:var(--gold)}.swatch.plum{background:var(--plum)}.swatch.blue{background:var(--blue)}.swatch.clay{background:var(--clay)}.swatch.selected{border-color:var(--ink)}.layout-choices .selected{outline:2px solid var(--ink);outline-offset:2px}input:focus-visible{outline:2px solid var(--ocean);outline-offset:3px}textarea:focus-visible{outline:2px solid var(--ocean);outline-offset:3px}select:focus-visible{outline:2px solid var(--ocean);outline-offset:3px}.format-picker{border-bottom:1px solid var(--line);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;border:0;margin:22px 0 4px}@media(max-width:720px){.format-picker{grid-template-columns:1fr 1fr}
+}.select-menu{position:relative;width:100%}.select-menu-trigger{width:100%;min-height:50px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 14px;border:1px solid var(--line-strong);border-radius:10px;background:#fff;text-align:left;font-weight:650}.select-menu-trigger svg{width:18px;color:var(--muted)}.select-menu-options{position:absolute;left:0;right:0;top:calc(100% + 7px);z-index:220;background:#fff;border:1px solid var(--line-strong);border-radius:12px;box-shadow:0 18px 40px rgba(24,32,45,.16);padding:7px}.select-menu-options small{color:var(--muted)}.recommend-picker .recommend-yes.selected{background:#dff4e8;color:#215d3f;border-color:#82c7a0}.recommend-picker .recommend-no.selected{background:#ffe3e6;color:#812d39;border-color:#df8791}:where(input,textarea,select){
+  appearance:none;
+  -webkit-appearance:none;
+  border:1px solid var(--line-strong,var(--line));
+  border-radius:8px;
+  background:#fff;
+  color:var(--ink)!important;
+  box-shadow:none;
+  outline:none!important;
+}:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),select){
+  min-height:46px;
+  padding:0 13px;
+}textarea{font:inherit;color:inherit;
+  min-height:110px;
+  padding:13px;
+  resize:vertical;
+}:where(input,textarea,select):focus-visible{
+  border-color:var(--ink);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--ink) 12%,transparent);
+}input[type="file"]{
+  font-size:0;
+}
