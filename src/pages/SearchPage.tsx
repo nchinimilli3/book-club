@@ -53,11 +53,19 @@ export function SearchPage(){
   const[detail,setDetail]=useState<BookSearchResult|null>(null),[details,setDetails]=useState<BookDecisionDetails|null>(null),[guide,setGuide]=useState<DecisionGuide|null>(null),[guideLoading,setGuideLoading]=useState(false);
   const[busy,setBusy]=useState<'club'|'personal'|'quick'|null>(null),[notice,setNotice]=useState('');
   const[personalSaved,setPersonalSaved]=useState(false),[clubSaved,setClubSaved]=useState(false);
+  const[personalLibrary,setPersonalLibrary]=useState<any[]>([]);
   const[personalShelf,setPersonalShelf]=useState('want_to_read'),[favorite,setFavorite]=useState(false),[profileReturn,setProfileReturn]=useState(false);
   const[quickAdd,setQuickAdd]=useState<BookSearchResult|null>(null);
   const[discovery,setDiscovery]=useState<BookDiscoveryResponse>({nyt:[],nytConfigured:false,nytStatus:'not_configured',apiReachable:true}),[discoveryLoading,setDiscoveryLoading]=useState(true);
   const[returnTarget,setReturnTarget]=useState<ReturnTarget|null>(null);
   const pushedRef=useRef(false);
+
+  useEffect(()=>{
+    if(!a.user){setPersonalLibrary([]);return}
+    let cancelled=false;
+    getPersonalLibrary(a.user.id).then(items=>{if(!cancelled)setPersonalLibrary(items)}).catch(()=>undefined);
+    return()=>{cancelled=true};
+  },[a.user?.id]);
 
   useEffect(()=>{
     let cancelled=false;
@@ -119,7 +127,7 @@ export function SearchPage(){
         const result=await saveBookToClub(a.activeClubId,book);setNotice(result.alreadySaved?`${book.title} is already on the table.`:`${book.title} added to ${a.workspace?.club.name||'the club'}’s table.`);void a.refresh();
       }else{
         if(!a.user)throw new Error('Sign in to save books.');
-        await savePersonalBook(a.user.id,book,{shelf:target});setNotice(`${book.title} saved to ${shelfLabel(target)}.`);
+        await savePersonalBook(a.user.id,book,{shelf:target});setPersonalLibrary(items=>[...items.filter(item=>!sameBook(book,item.book)),{book,shelf:target}]);setNotice(`${book.title} saved to ${shelfLabel(target)}.`);
       }
       setQuickAdd(null);
     }catch(err:any){setNotice(err?.message||'Could not add this book.')}finally{setBusy(null)}
@@ -129,6 +137,12 @@ export function SearchPage(){
   function openCatalogBook(book:CatalogBook){openDetail(catalogToSearchResult(book))}
   function addCatalogBook(book:CatalogBook){setQuickAdd(catalogToSearchResult(book))}
   function chooseQuickTarget(book:BookSearchResult,target:BookAddTarget){void quickSave(book,target)}
+  function savedTargetsFor(book:BookSearchResult):Partial<Record<BookAddTarget,boolean>>{
+    return {
+      club:!!a.workspace?.ideaBooks.some(item=>sameBook(book,item.book))||sameBook(book,a.workspace?.currentBook?.book),
+      ...Object.fromEntries(personalLibrary.filter(item=>sameBook(book,item.book)).map(item=>[item.shelf,true]))
+    } as Partial<Record<BookAddTarget,boolean>>;
+  }
 
 
   if(detail)return <div className="page book-preview">
@@ -149,8 +163,8 @@ export function SearchPage(){
 
   return <div className="page search-page"><header className="page-title search-title"><h1>Find a book</h1>{returnTarget&&<button type="button" className="search-exit" onClick={exitSearch} aria-label={`Close search and return to ${returnTarget.label||'previous page'}`}><X/></button>}</header><div className="search-field"><Search/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Title, author, ISBN" autoFocus/>{q&&<button type="button" onClick={()=>setQ('')} aria-label="Clear search"><X/></button>}</div>{notice&&<FeedbackMessage className="search-notice">{notice}</FeedbackMessage>}
     {!q.trim()?<div className="search-discovery">
-      <BookRail title="NYT Best Sellers" books={nytBooks} loading={discoveryLoading} meta={b=>b.rank?`#${b.rank} · ${b.listName||'Best Sellers'}`:(b.listName||'Best Sellers')} onOpen={openCatalogBook} onAdd={addCatalogBook} renderOverlay={book=>quickAdd?.key===book.key?<BookAddMenu title={book.title} clubName={a.workspace?.club.name} showClub={!!a.activeClubId} busy={busy==='quick'} onClose={()=>setQuickAdd(null)} onChoose={target=>chooseQuickTarget(catalogToSearchResult(book),target)}/>:null} emptyMessage={!discovery.apiReachable?'The deployed site cannot reach the Book Club API.':!discovery.nytConfigured?'The NYT key is not available on the API Worker.':discovery.nytStatus==='error'?'NYT is connected, but its request was rejected.':'Best Sellers are unavailable right now.'}/>
+      <BookRail title="NYT Best Sellers" books={nytBooks} loading={discoveryLoading} meta={b=>b.rank?`#${b.rank} · ${b.listName||'Best Sellers'}`:(b.listName||'Best Sellers')} onOpen={openCatalogBook} onAdd={addCatalogBook} renderOverlay={book=>quickAdd?.key===book.key?<BookAddMenu title={book.title} clubName={a.workspace?.club.name} showClub={!!a.activeClubId} busy={busy==='quick'} savedTargets={savedTargetsFor(catalogToSearchResult(book))} onClose={()=>setQuickAdd(null)} onChoose={target=>chooseQuickTarget(catalogToSearchResult(book),target)}/>:null} emptyMessage={!discovery.apiReachable?'The deployed site cannot reach the Book Club API.':!discovery.nytConfigured?'NYT is not configured on the API Worker.':discovery.nytStatus==='error'?'NYT is connected, but its request was rejected.':'Best Sellers are unavailable right now.'}/>
       {!discovery.apiReachable?<p className="discovery-config-note discovery-config-error">API connection failed: {discovery.nytError||'the Pages app could not reach book-club-api.'}</p>:discovery.nytStatus==='error'?<p className="discovery-config-note discovery-config-error">NYT Worker check failed: {discovery.nytError||'provider request failed.'}</p>:!discovery.nytConfigured?<p className="discovery-config-note">Add NYT_BOOKS_API_KEY to the book-club-api Worker and redeploy that Worker.</p>:null}
-    </div>:loading?<BookSkeleton count={8}/>:q.trim().length>=2&&!results.length?<PageState title="No match yet." body="Try the title and author." compact/>:<div className="book-wall">{results.map(b=><article className="search-book-card" key={b.key}><button type="button" className="search-book-open" onClick={()=>openDetail(b)} aria-label={`Open ${b.title}`}><BookCover className="book-image" title={b.title} author={b.author} src={b.cover}/><b>{b.title}</b><small>{b.author}</small></button><button type="button" className="search-quick-add" aria-expanded={quickAdd?.key===b.key} aria-label={`Add ${b.title}`} onClick={()=>setQuickAdd(x=>x?.key===b.key?null:b)}><Plus/> Add</button>{quickAdd?.key===b.key&&<BookAddMenu title={b.title} clubName={a.workspace?.club.name} showClub={!!a.activeClubId} busy={busy==='quick'} onClose={()=>setQuickAdd(null)} onChoose={target=>chooseQuickTarget(b,target)}/>}</article>)}</div>}
+    </div>:loading?<BookSkeleton count={8}/>:q.trim().length>=2&&!results.length?<PageState title="No match yet." body="Try the title and author." compact/>:<div className="book-wall">{results.map(b=><article className="search-book-card" key={b.key}><button type="button" className="search-book-open" onClick={()=>openDetail(b)} aria-label={`Open ${b.title}`}><BookCover className="book-image" title={b.title} author={b.author} src={b.cover}/><b>{b.title}</b><small>{b.author}</small></button><button type="button" className="search-quick-add" aria-expanded={quickAdd?.key===b.key} aria-label={`Add ${b.title}`} onClick={()=>setQuickAdd(x=>x?.key===b.key?null:b)}><Plus/> Add</button>{quickAdd?.key===b.key&&<BookAddMenu title={b.title} clubName={a.workspace?.club.name} showClub={!!a.activeClubId} busy={busy==='quick'} savedTargets={savedTargetsFor(b)} onClose={()=>setQuickAdd(null)} onChoose={target=>chooseQuickTarget(b,target)}/>}</article>)}</div>}
   </div>
 }

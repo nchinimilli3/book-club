@@ -17,23 +17,31 @@ import { ClubSettingsPage } from './pages/ClubSettingsPage';
 import { markAllNotificationsRead } from './lib/data';
 import { QuickPassageCapture } from './components/QuickPassageCapture';
 
+function BootScreen({message,fullViewport=false}:{message:string;fullViewport?:boolean}){
+  return <div className={`boot boot-loading${fullViewport?' boot-full':''}`} role="status" aria-live="polite">
+    <div className="boot-bookshelf" aria-hidden="true"><i/><i/><i/><span/></div>
+    <b>BOOK CLUB</b><p>Finding your next chapter</p><span>{message}</span>
+    <div className="boot-progress" aria-hidden="true"><i/><i/><i/></div>
+  </div>;
+}
+
 function RootRedirect(){
   const a=useApp(),{navigate}=useRouter();
   useEffect(()=>{navigate(a.activeClubId?`/clubs/${a.activeClubId}`:'/clubs',true)},[a.activeClubId,navigate]);
-  return <div className="boot"><span>Opening BOOK CLUB…</span></div>;
+  return <BootScreen message="Opening BOOK CLUB…"/>;
 }
 
 function ClubRoute({clubId}:{clubId:string}){
   const a=useApp();
   useEffect(()=>{if(a.activeClubId!==clubId)void a.selectClub(clubId).catch(()=>{})},[clubId,a.activeClubId,a.selectClub]);
-  if(a.activeClubId!==clubId||a.workspace?.club.id!==clubId)return <div className="boot"><span>Opening club…</span></div>;
+  if(a.activeClubId!==clubId||a.workspace?.club.id!==clubId)return <BootScreen message="Opening club…"/>;
   return <HomePage/>;
 }
 
 function BookRoute({clubId,clubBookId}:{clubId:string;clubBookId:string}){
   const a=useApp();
   useEffect(()=>{if(a.activeClubId!==clubId)void a.selectClub(clubId).catch(()=>{})},[clubId,a.activeClubId,a.selectClub]);
-  if(a.activeClubId!==clubId||a.workspace?.club.id!==clubId)return <div className="boot"><span>Opening reading room…</span></div>;
+  if(a.activeClubId!==clubId||a.workspace?.club.id!==clubId)return <BootScreen message="Opening reading room…"/>;
   return <ReadingRoom clubId={clubId} clubBookId={clubBookId}/>;
 }
 
@@ -49,7 +57,7 @@ function Shell(){
   const[notificationMenuOpen,setNotificationMenuOpen]=useState(false);
   const[clearingNotifications,setClearingNotifications]=useState(false);
   useEffect(()=>{if(!clubMenuOpen&&!notificationMenuOpen)return;const close=(event:PointerEvent)=>{const target=event.target as Element;if(!target.closest('.club-switcher-wrap')&&!target.closest('.notification-menu-wrap')){setClubMenuOpen(false);setNotificationMenuOpen(false)}};document.addEventListener('pointerdown',close);return()=>document.removeEventListener('pointerdown',close)},[clubMenuOpen,notificationMenuOpen]);
-  if(a.loading)return <div className="boot boot-loading"><b>BOOK CLUB</b><span>Opening your clubs…</span><div className="boot-progress" aria-hidden="true"><i/><i/><i/></div></div>;
+  if(a.loading)return <BootScreen message="Opening your clubs…" fullViewport/>;
   if(a.error)return <div className="boot"><b>Something went wrong.</b><span>{a.error}</span><button onClick={a.refresh}>Try again</button></div>;
 
   let page:React.ReactNode;

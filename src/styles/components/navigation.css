@@ -24,7 +24,7 @@
 }@media(max-width:720px){
   .global-actions{gap:4px}
 }@media(max-width:720px){
-  .global-actions .icon-button{width:40px;height:40px}
+  .global-actions .icon-button{width:44px;height:44px}
 }@media(max-width:720px){
   .mobile-nav{backdrop-filter:none;
     display:grid;grid-template-columns:repeat(3,1fr);position:fixed;left:0;right:0;bottom:0;z-index:80;

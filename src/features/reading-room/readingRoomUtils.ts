@@ -36,10 +36,21 @@ export function normalizeAccent(r:number,g:number,b:number):[number,number,numbe
   return [Math.round((rr+m)*255),Math.round((gg+m)*255),Math.round((bb+m)*255)];
 }
 
-export function coverAccent(src:string,seed:string):Promise<{accent:string;soft:string;rgb:string}>{
-  const fallback={accent:'#6f6652',soft:'#f1eadc',rgb:'111,102,82'};
+function rgbHue(r:number,g:number,b:number){
+  const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;
+  if(d<8)return -1;
+  let h=max===r?(g-b)/d:max===g?(b-r)/d+2:(r-g)/d+4;
+  h=(h*60+360)%360;return h;
+}
+
+type CoverPalette={accent:string;soft:string;rgb:string;colors:string[]};
+const coverPaletteCache=new Map<string,Promise<CoverPalette>>();
+
+export function coverAccent(src:string,seed:string):Promise<CoverPalette>{
+  const fallback:CoverPalette={accent:'#6f6652',soft:'#f1eadc',rgb:'111,102,82',colors:['#5f86a8','#8f719d','#c06c54','#c49c37']};
   if(!src)return Promise.resolve(fallback);
-  return new Promise(resolve=>{
+  const cached=coverPaletteCache.get(src);if(cached)return cached;
+  const palette=new Promise<CoverPalette>(resolve=>{
     const img=new Image();img.crossOrigin='anonymous';
     img.onload=()=>{try{
       const canvas=document.createElement('canvas');canvas.width=28;canvas.height=42;
@@ -54,15 +65,25 @@ export function coverAccent(src:string,seed:string):Promise<{accent:string;soft:
         const key=`${Math.round(r/32)}-${Math.round(g/32)}-${Math.round(b/32)}`;
         const v=buckets.get(key)||{r:0,g:0,b:0,n:0,sat:0};v.r+=r;v.g+=g;v.b+=b;v.n++;v.sat+=sat;buckets.set(key,v);
       }
-      const best=[...buckets.values()].sort((a,b)=>((b.n*(1+b.sat/Math.max(1,b.n)/70))-(a.n*(1+a.sat/Math.max(1,a.n)/70))))[0];
-      if(!best)return resolve(fallback);
-      const rawR=Math.round(best.r/best.n),rawG=Math.round(best.g/best.n),rawB=Math.round(best.b/best.n);
-      const [r,g,b]=normalizeAccent(rawR,rawG,rawB);
-      resolve({accent:`rgb(${r} ${g} ${b})`,soft:`rgba(${r}, ${g}, ${b}, .20)`,rgb:`${r},${g},${b}`});
+      const ranked=[...buckets.values()].sort((a,b)=>((b.n*(1+b.sat/Math.max(1,b.n)/70))-(a.n*(1+a.sat/Math.max(1,a.n)/70))));
+      if(!ranked.length)return resolve(fallback);
+      const chosen:{color:string;hue:number}[]=[];
+      for(const v of ranked){
+        const raw=[Math.round(v.r/v.n),Math.round(v.g/v.n),Math.round(v.b/v.n)] as const;
+        const hue=rgbHue(...raw);
+        if(hue>=0&&chosen.some(x=>{const distance=Math.abs(x.hue-hue);return Math.min(distance,360-distance)<28}))continue;
+        const [r,g,b]=normalizeAccent(...raw);chosen.push({color:`rgb(${r} ${g} ${b})`,hue});
+        if(chosen.length===5)break;
+      }
+      const colors=chosen.map(x=>x.color);
+      if(!colors.length)return resolve(fallback);
+      const [r,g,b]=colors[0].match(/\d+/g)!.map(Number);
+      resolve({accent:colors[0],soft:`rgba(${r}, ${g}, ${b}, .20)`,rgb:`${r},${g},${b}`,colors});
     }catch{resolve(fallback)}};
-    img.onerror=()=>resolve({...fallback,accent:`hsl(${Array.from(seed).reduce((n,c)=>(n*31+c.charCodeAt(0))>>>0,0)%360} 34% 34%)`});
+    img.onerror=()=>{const hue=Array.from(seed).reduce((n,c)=>(n*31+c.charCodeAt(0))>>>0,0)%360;resolve({...fallback,accent:`hsl(${hue} 34% 34%)`,colors:[`hsl(${hue} 34% 34%)`,...fallback.colors.slice(1)]})};
     img.src=src;
   });
+  coverPaletteCache.set(src,palette);return palette;
 }
 
 function localInput(iso?:string){

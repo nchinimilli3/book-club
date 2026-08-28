@@ -71,14 +71,11 @@ export default function AcrylicBookshelf({
               onClick={()=>onOpen?.(book,index)}
               onKeyDown={e=>keyboardOpen(e,book,index)}
             >
-              {book.cover ? (
-                <img src={book.cover} alt={book.title ?? ''} />
-              ) : (
-                <div className="acrylicBookFallback">
-                  <strong>{book.title}</strong>
-                  {book.author && <span>{book.author}</span>}
-                </div>
-              )}
+              {book.cover && <img src={book.cover} alt={book.title ?? ''} onError={e=>{e.currentTarget.style.display='none';e.currentTarget.nextElementSibling?.removeAttribute('hidden')}} />}
+              <div className="acrylicBookFallback" hidden={Boolean(book.cover)}>
+                <strong>{book.title}</strong>
+                {book.author && <span>{book.author}</span>}
+              </div>
               {onEdit&&<button type="button" className="acrylicBookEdit" aria-label={`Edit ${book.title||'book'}`} onClick={e=>{e.stopPropagation();onEdit(book,index)}}>•••</button>}
             </div>
           ))}

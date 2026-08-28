@@ -436,6 +436,165 @@
 }
 /* Canonical mobile meeting dialog layout. */
 @media(max-width:760px){.meeting-modal-backdrop{place-items:center;justify-items:center;align-items:center;padding:12px}.meeting-dialog{width:min(100%,calc(100vw - 24px));margin:auto;box-sizing:border-box}.meeting-dialog h2{max-width:calc(100% - 52px);padding-right:0;overflow-wrap:anywhere}.meeting-vote-manage{width:100%;box-sizing:border-box;justify-content:center;text-align:center}}
+/* Final mobile meeting-room layout: one scroll region and one fixed action row. */
+@media (max-width: 720px) {
+  .meeting-mode-page {
+    box-sizing: border-box;
+    height: calc(100dvh - 70px) !important;
+    min-height: 0 !important;
+    padding: 0 16px 76px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .meeting-mode .meeting-mode-top {
+    flex: 0 0 auto;
+    min-height: 56px;
+    padding: 10px 0 !important;
+  }
+
+  .meeting-mode .meeting-progress {
+    flex: 0 0 auto;
+    margin: 10px 0 0 !important;
+    gap: 10px;
+  }
+
+  .meeting-mode .meeting-opening,
+  .meeting-mode .meeting-stage {
+    flex: 1 1 auto;
+    min-height: 0 !important;
+    width: 100%;
+    padding: 18px 0 12px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain;
+  }
+
+  .meeting-mode .meeting-opening {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    gap: 14px !important;
+  }
+
+  .meeting-mode .meeting-opening > .typographic-cover,
+  .meeting-mode .meeting-opening > img {
+    order: -1;
+    align-self: center;
+    justify-self: center;
+    width: min(150px, 48vw) !important;
+    max-height: 210px;
+  }
+
+  .meeting-mode .meeting-opening-copy { max-width: none; text-align: center; display: flex; flex-direction: column; min-width: 0; }
+  .meeting-mode .meeting-opening h1 {
+    font-size: clamp(44px, 13vw, 58px) !important;
+    line-height: .9 !important;
+    overflow-wrap: anywhere;
+  }
+  .meeting-mode .meeting-opening h2 { margin: 8px 0 0 !important; }
+  .meeting-mode .meeting-opening-meta {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+  .meeting-mode .meeting-attendees { justify-content: center; margin-top: 12px; }
+  .meeting-mode .meeting-room-start {
+    width: min(100%, 390px) !important;
+    min-height: 52px !important;
+    margin-top: 20px !important;
+    margin-inline: auto !important;
+    align-self: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+  }
+
+  .meeting-mode .meeting-stage > header { flex: 0 0 auto; }
+  .meeting-mode .meeting-stage > header h2 {
+    font-size: clamp(32px, 9vw, 48px) !important;
+    line-height: .98 !important;
+    overflow-wrap: anywhere;
+  }
+  .meeting-mode .meeting-saved-grid,
+  .meeting-mode .guided-prompt-list,
+  .meeting-mode .meeting-discussion-stage > .meeting-favorites,
+  .meeting-mode .meeting-discussion-stage > .meeting-unresolved {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .meeting-mode .meeting-saved-grid { grid-template-columns: 1fr !important; }
+  .meeting-mode .meeting-guide-tabs {
+    flex: 0 0 auto;
+    max-width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+  .meeting-mode .meeting-guide-tabs::-webkit-scrollbar { display: none; }
+  .meeting-mode .meeting-guide-tabs button { min-height: 44px; flex: 0 0 auto; }
+  .meeting-mode .guided-prompt-list article {
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 10px;
+    padding: 16px 0;
+  }
+  .meeting-mode .guided-prompt-list article > p {
+    font-size: clamp(20px, 6vw, 28px) !important;
+    overflow-wrap: anywhere;
+  }
+  .meeting-mode .meeting-empty {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    min-height: 140px;
+    text-align: center;
+  }
+
+  .meeting-mode .meeting-step-actions {
+    position: static !important;
+    inset: auto !important;
+    flex: 0 0 auto !important;
+    width: 100%;
+    margin: 0 !important;
+    padding: 12px 0 max(12px, env(safe-area-inset-bottom)) !important;
+    display: flex !important;
+    gap: 10px !important;
+    border-top: 1px solid rgba(244,239,230,.18);
+    background: #143139 !important;
+  }
+  .meeting-mode .meeting-step-actions button {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    min-height: 52px !important;
+    padding: 0 12px !important;
+    justify-content: center !important;
+    text-align: center !important;
+  }
+  .meeting-mode .meeting-wrap-stage {
+    overflow-y: auto !important;
+    text-align: center;
+    justify-items: center;
+  }
+  .meeting-mode .meeting-wrap-stage h2 { max-width: 100%; }
+  .meeting-mode .meeting-wrap-actions {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .meeting-mode .meeting-wrap-actions > * {
+    width: 100% !important;
+    min-height: 56px !important;
+    min-width: 0 !important;
+    padding: 8px 10px !important;
+    justify-content: center !important;
+    text-align: center !important;
+    overflow-wrap: anywhere;
+  }
+}
 /* Mobile home meeting summary: one centered hierarchy and a clear RSVP action. */
 @media(max-width:700px){
   .editorial-meeting{

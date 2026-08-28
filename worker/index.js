@@ -615,7 +615,7 @@ async function selfHostedGoodreadsCoverCandidate(env, { isbn, title, author }) {
       params.set('book_title', String(title));
       params.set('author_name', String(author));
     } else return null;
-    const data = await fetchJson(`${base}/bookcover?${params}`, {}, 6000);
+    const data = await cachedProviderJson(`${base}/bookcover?${params}`, `goodreads:self-hosted:${params.toString()}`, 60 * 60 * 24 * 30, 60 * 30);
     if (validCoverUrl(data?.url)) {
       console.info('cover_provider:self_hosted_goodreads');
       return { url: data.url, source: 'self_hosted_goodreads' };
@@ -2502,15 +2502,22 @@ Return 3-5 items.`,
             error,
         );
 
-        return json(
-          {
-            error:
-              'Reader context unavailable',
-          },
-          502,
-          request,
-          env,
-        );
+        const subjects = (source.subjects || []).slice(0, 6).map((subject) => String(subject).replace(/[_-]+/g, ' '));
+        const fallback = [
+          source.description ? {
+            kind: 'overview', title: `About ${title}`,
+            summary_short: source.description, summary_medium: source.description, summary_deep: source.description,
+            context_sources: sources.map((item) => ({source_name: item.name, source_url: item.url, source_type: 'reference'})),
+          } : null,
+          subjects.length ? {
+            kind: 'themes', title: 'Catalog context',
+            summary_short: `Cataloged themes include ${subjects.join(', ')}.`,
+            summary_medium: `Catalog metadata for ${title} points to ${subjects.join(', ')}.`,
+            summary_deep: 'More source-backed context will appear when it can be verified.',
+            context_sources: sources.map((item) => ({source_name: item.name, source_url: item.url, source_type: 'reference'})),
+          } : null,
+        ].filter(Boolean);
+        return json({items: fallback, ai: false, fallback: true}, 200, request, env);
       }
     }
 

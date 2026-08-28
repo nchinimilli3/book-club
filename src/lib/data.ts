@@ -873,7 +873,9 @@ function summarizeGoodreads(rows:GoodreadsImportBook[]):GoodreadsImportPreview{
 }
 export async function previewGoodreadsImport(file:File):Promise<GoodreadsImportPreview>{
   if(!/\.csv$/i.test(file.name)&&file.type&&!/csv/i.test(file.type))throw new Error('Choose a Goodreads CSV file.');
-  return summarizeGoodreads(parseGoodreadsText(await file.text()));
+  const rows=parseGoodreadsText(await file.text()), preview=summarizeGoodreads(rows);
+  const covers=await resolveGoodreadsImportCovers(preview.samples);
+  return {...preview,samples:preview.samples.map((book,index)=>({...book,cover:covers.get(index)||book.cover}))};
 }
 
 async function resolveGoodreadsImportCovers(rows:GoodreadsImportBook[]){
@@ -888,7 +890,10 @@ async function resolveGoodreadsImportCovers(rows:GoodreadsImportBook[]){
           resolveBookCover({title:item.title,author:item.author,isbn:preferredIsbn}),
           new Promise<null>(resolve=>setTimeout(()=>resolve(null),6500)),
         ]);
-        results.set(index,resolved?.url||item.cover);
+        if(resolved?.url){results.set(index,resolved.url);continue}
+        const simplifiedTitle=item.title.replace(/\s*\([^)]*\)/g,'').replace(/\s+/g,' ').trim();
+        const retry= simplifiedTitle!==item.title ? await resolveBookCover({title:simplifiedTitle,author:item.author,isbn:preferredIsbn}) : null;
+        results.set(index,retry?.url||item.cover);
       }catch{results.set(index,item.cover)}
     }
   });

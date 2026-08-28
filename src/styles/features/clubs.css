@@ -31,5 +31,5 @@
 }.header-club-switcher:hover{background:#fff;border-color:var(--line-strong)}.header-club-switcher svg{flex:0 0 auto;color:var(--muted);width:16px;height:16px}@media(max-width:720px){
   .club-switcher-wrap{min-width:0}
 }@media(max-width:720px){
-  .header-club-switcher{padding:0 5px;max-width:68vw;padding-left:0;font-size:14px}
+  .header-club-switcher{min-height:44px;padding:0 12px;max-width:calc(100vw - 88px);font-size:14px}
 }

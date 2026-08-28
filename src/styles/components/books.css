@@ -4,3 +4,34 @@
 }@media(max-width:700px){.quick-add-menu{max-width:calc(100vw - 28px)}}.book-facts>div:first-child{border-top:0}@media(max-width:700px){.book-facts b{max-width:65%}}.book-facts{margin:22px auto 0;width:min(330px,100%);text-align:center;margin-top:24px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 20px;padding:18px 0 3px;border-top:1px solid var(--ink);border-bottom:0}.book-facts>div{align-items:baseline;justify-content:space-between;gap:16px;border-top:1px solid var(--line);border-radius:0;display:block;padding:11px 0 16px;border:0;border-bottom:1px solid var(--line);background:transparent}.book-facts small{display:block;margin-bottom:5px;font-size:11px;font-weight:790;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}.book-facts b{margin-top:3px;font-size:15px;display:block;max-width:none;margin:0;font:500 21px/1.16 var(--serif);text-align:left;color:var(--ink)}@media(max-width:700px){
   .book-facts{grid-template-columns:1fr}.book-facts>div{padding:10px 0 13px}
 }
+
+@media (max-width: 700px) {
+  /* Treat quick-add as a compact mobile dialog so it never hangs off a book card. */
+  .quick-add-menu {
+    position: fixed;
+    top: 50% !important;
+    right: 16px;
+    left: 16px;
+    width: auto;
+    max-width: none;
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    transform: translateY(-50%);
+  }
+}
+
+.quick-add-menu header button {
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.quick-add-menu header button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.quick-add-menu > button.saved {
+  background: #e8f0ff;
+  color: #184b9b;
+}

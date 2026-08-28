@@ -62,3 +62,110 @@
     padding-inline:14px;
   }
 }
+
+/* Mobile onboarding: keep the first-book decision compact and above the app nav. */
+@media (max-width: 700px) {
+  html:has(.new-club-page),
+  body:has(.new-club-page),
+  .app:has(.new-club-page) {
+    background: #3b241b;
+  }
+
+  .new-club-page {
+    min-height: 100dvh;
+    background: #3b241b;
+    padding-bottom: 0;
+    overscroll-behavior-y: none;
+  }
+
+  .new-club-onboarding {
+    min-height: calc(100dvh - 58px);
+    margin: 0 -16px;
+    padding: 24px 20px calc(112px + env(safe-area-inset-bottom));
+    gap: 36px;
+    border-radius: 0;
+  }
+
+  .new-club-onboarding-shade {
+    background: linear-gradient(180deg, rgba(18, 16, 14, .7), rgba(18, 16, 14, .52) 58%, rgba(18, 16, 14, .7));
+  }
+
+  .new-club-onboarding-top {
+    display: block;
+  }
+
+  .new-club-onboarding-top h1 {
+    font-size: clamp(36px, 11vw, 52px);
+    overflow-wrap: anywhere;
+  }
+
+  .new-club-top-actions {
+    margin-top: 14px;
+  }
+
+  .new-club-top-actions button {
+    min-height: 44px;
+    padding-inline: 10px;
+  }
+
+  .new-club-onboarding-main {
+    display: block;
+  }
+
+  .new-club-copy h2 {
+    margin: 0 0 14px;
+    max-width: 100%;
+    font-size: clamp(42px, 12vw, 58px);
+    line-height: .92;
+    overflow-wrap: anywhere;
+  }
+
+  .new-club-copy > p {
+    max-width: 34rem;
+    font-size: 16px;
+    line-height: 1.4;
+  }
+
+  .new-club-primary-actions {
+    display: grid;
+    gap: 10px;
+    margin-top: 22px;
+  }
+
+  .new-club-primary-actions button {
+    width: 100%;
+    min-height: 50px;
+    justify-content: center;
+  }
+
+  .new-club-members {
+    margin-top: 22px;
+  }
+
+  .new-club-members > .new-club-member-invite {
+    display: none;
+  }
+
+  .new-club-path {
+    display: none;
+  }
+
+  .new-club-path:has(.new-club-vote) {
+    display: block;
+    max-width: none;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .new-club-path:has(.new-club-vote) > p,
+  .new-club-path:has(.new-club-vote) > ol {
+    display: none;
+  }
+
+  .new-club-path:has(.new-club-vote) .new-club-vote {
+    margin-top: 18px;
+    min-height: 50px;
+  }
+}
