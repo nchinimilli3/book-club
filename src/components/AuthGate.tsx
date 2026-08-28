@@ -149,12 +149,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       </div>
 
       <section className="auth-panel">
-        <div className="auth-brand"><span>✦</span> BOOK CLUB</div>
-
         {mode === 'welcome' && (
           <div className="auth-welcome">
             <h1>Your book club,<br /><em>all in one place.</em></h1>
-            <p className="auth-intro">Pick your next read, save the thoughts you have along the way, and actually make the FaceTime happen.</p>
+            <p className="auth-intro">Choose what to read next, keep notes as you go, and plan the next meeting.</p>
             <div className="auth-actions">
               <button className="primary auth-primary" onClick={() => setMode('signup')}>Create an account</button>
               <button className="auth-secondary oauth-button" onClick={() => void continueWithGoogle()} disabled={loading}>
@@ -171,7 +169,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             <button type="button" className="auth-back" onClick={resetToWelcome}><ArrowLeft size={18} /> Back</button>
             <p className="auth-kicker">Start with you</p>
             <h1>Create your account.</h1>
-            <p className="auth-form-intro">You’ll build your bookshelf and join or start a club next.</p>
+            <p className="auth-form-intro">Build your bookshelf + join or start a club next.</p>
 
             <label htmlFor="display-name">Your name</label>
             <input id="display-name" autoComplete="name" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Neha" />

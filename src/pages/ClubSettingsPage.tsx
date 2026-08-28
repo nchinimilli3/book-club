@@ -13,13 +13,19 @@ export function ClubSettingsPage({clubId}:{clubId:string}){
  async function run(key:string,fn:()=>Promise<void>,msg:string){setBusy(key);setNotice('');try{await fn();setNotice(msg)}catch(e:any){setNotice(e?.message||'Could not complete that action.')}finally{setBusy('')}}
  async function setCover(file?:File){
   if(!file)return;
-  const dataUrl=await new Promise<string>((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=()=>typeof reader.result==='string'?resolve(reader.result):reject(new Error('Could not read that image.'));
-    reader.onerror=()=>reject(new Error('Could not read that image.'));
-    reader.readAsDataURL(file);
-  });
-  setCoverDraft(dataUrl);
+  setNotice('');
+  try{
+   if(!file.type.startsWith('image/'))throw new Error('Choose an image file.');
+   const source=URL.createObjectURL(file);
+   try{
+    const image=await new Promise<HTMLImageElement>((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('That image could not be opened.'));img.src=source});
+    const scale=Math.min(1,1600/image.naturalWidth,900/image.naturalHeight);
+    const canvas=document.createElement('canvas');canvas.width=Math.round(image.naturalWidth*scale);canvas.height=Math.round(image.naturalHeight*scale);
+    const context=canvas.getContext('2d');if(!context)throw new Error('That image could not be prepared.');
+    context.fillStyle='#e8e1d5';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(image,0,0,canvas.width,canvas.height);
+    setCoverDraft(canvas.toDataURL('image/jpeg',.8));
+   }finally{URL.revokeObjectURL(source)}
+  }catch(error:any){setNotice(error?.message||'Could not prepare that image.')}
  }
  const sorted=useMemo(()=>w?[...w.members].sort((x,y)=>x.id===w.club.ownerId?-1:y.id===w.club.ownerId?1:x.displayName.localeCompare(y.displayName)):[],[w]);
  if(!w||w.club.id!==clubId)return <div className="page"><div className="empty-state"><h2>Club settings unavailable.</h2></div></div>;

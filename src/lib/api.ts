@@ -110,10 +110,9 @@ export async function syncReadingPlanToCalendar(clubBookId:string){return apiJso
 export async function removeReadingPlanFromCalendar(clubBookId:string){return apiJson('/api/calendar/remove-reading-plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({clubBookId})})}
 export async function getApiHealth(){try{return{...(await apiJson('/api/health')),configured:true}}catch{return{ok:false,configured:Boolean(API||!import.meta.env.DEV)}}}
 
-export type DiscoveryBook={key:string;source:'nyt'|'apple';title:string;author:string;cover:string;year?:number;isbn?:string;subjects?:string[];rank?:number;weeksOnList?:number;listName?:string;storeUrl?:string};
+export type DiscoveryBook={key:string;source:'nyt';title:string;author:string;cover:string;year?:number;isbn?:string;subjects?:string[];rank?:number;weeksOnList?:number;listName?:string;storeUrl?:string};
 export type BookDiscoveryResponse={
   nyt:DiscoveryBook[];
-  apple:DiscoveryBook[];
   nytConfigured:boolean;
   nytStatus:'ok'|'error'|'not_configured';
   nytError?:string;
@@ -124,14 +123,13 @@ export async function getBookDiscovery():Promise<BookDiscoveryResponse>{
     const j=await apiJson('/api/book-discovery');
     return{
       nyt:Array.isArray(j?.nyt)?j.nyt:[],
-      apple:Array.isArray(j?.apple)?j.apple:[],
       nytConfigured:Boolean(j?.nytConfigured),
       nytStatus:j?.nytStatus==='ok'||j?.nytStatus==='error'||j?.nytStatus==='not_configured'?j.nytStatus:(j?.nytConfigured?'ok':'not_configured'),
       nytError:typeof j?.nytError==='string'?j.nytError:undefined,
       apiReachable:true,
     };
   }catch(err:any){
-    return{nyt:[],apple:[],nytConfigured:false,nytStatus:'error',nytError:err?.message||'Book Club API could not be reached.',apiReachable:false};
+    return{nyt:[],nytConfigured:false,nytStatus:'error',nytError:err?.message||'Book Club API could not be reached.',apiReachable:false};
   }
 }
 

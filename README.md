@@ -48,7 +48,7 @@ npm run build
 `test:release` checks TypeScript, routes/actions, RPC wiring, sticker references, schema-contract coverage, and Worker syntax. Before launch, also complete the live multi-account privacy/lifecycle checks in `PRODUCTION_RELEASE_CHECKLIST.md`.
 
 ## Book discovery
-Search has a browse state before typing: live NYT Best Sellers plus Apple Books catalog discovery. Set the NYT key only on `book-club-api` (`wrangler secret put NYT_BOOKS_API_KEY` inside `worker/`); never expose it in Vite. In production, the Pages Function at `/api/*` reaches that Worker through the `BOOK_CLUB_API` service binding, so a `VITE_API_BASE_URL` is not required on the deployed site. Apple Books discovery uses Apple's public iTunes Search API and is cached by the Worker. Search now distinguishes a missing key, an unreachable API Worker, and an NYT provider error.
+Search has a browse state before typing with live NYT Best Sellers. Set the NYT key only on `book-club-api` (`wrangler secret put NYT_BOOKS_API_KEY` inside `worker/`); never expose it in Vite. In production, the Pages Function at `/api/*` reaches that Worker through the `BOOK_CLUB_API` service binding, so a `VITE_API_BASE_URL` is not required on the deployed site. Search distinguishes a missing key, an unreachable API Worker, and an NYT provider error.
 
 ## Quick Add passage scanning
 

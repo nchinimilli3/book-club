@@ -87,8 +87,8 @@
 }.club-cover-actions .primary{margin:0}.club-cover-actions .secondary{
   border:0;
   background:transparent;
-  padding:0;
-  min-height:auto;
+  padding:10px 14px;
+  min-height:44px;
   color:var(--muted);
   text-decoration:underline;
   text-underline-offset:3px;

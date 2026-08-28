@@ -90,7 +90,7 @@
 .notification-item.is-read .notification-icon{opacity:.68}
 
 @media(max-width:720px){
-  .notification-quick-menu{right:-44px;width:min(270px,calc(100vw - 24px))}
+  .notification-quick-menu{position:fixed;top:66px;left:12px;right:12px;width:auto}
 }
 
 @media(max-width:720px){

@@ -1,7 +1,7 @@
 import type { DiscoveryBook } from './api';
 import type { BookSearchResult } from './books';
 
-export type CatalogSource='nyt'|'apple'|'google'|'supabase';
+export type CatalogSource='nyt'|'google'|'supabase';
 export type CatalogBook={
   key:string;
   source:CatalogSource;
@@ -15,7 +15,7 @@ export type CatalogBook={
   listName?:string;
 };
 
-export function discoveryToCatalog(book:DiscoveryBook,source:Extract<CatalogSource,'nyt'|'apple'>):CatalogBook{
+export function discoveryToCatalog(book:DiscoveryBook,source:Extract<CatalogSource,'nyt'>):CatalogBook{
   return {key:book.key,source,title:book.title,author:book.author,cover:book.cover,year:book.year,isbn:book.isbn,subjects:book.subjects,rank:book.rank,listName:book.listName};
 }
 

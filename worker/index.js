@@ -604,7 +604,29 @@ async function cachedProviderJson(url, cacheKey, ttlSeconds = 60 * 60 * 24 * 30,
   return payload;
 }
 
-async function goodreadsCoverCandidate({ isbn, title, author }) {
+async function selfHostedGoodreadsCoverCandidate(env, { isbn, title, author }) {
+  const base = String(env.GOODREADS_COVER_API_URL || '').replace(/\/$/, '');
+  if (!base) return null;
+  try {
+    const params = new URLSearchParams({ image_size: 'large' });
+    const normalizedIsbn = normalizeIsbn(isbn);
+    if (normalizedIsbn) params.set('isbn', normalizedIsbn);
+    else if (title && author) {
+      params.set('book_title', String(title));
+      params.set('author_name', String(author));
+    } else return null;
+    const data = await fetchJson(`${base}/bookcover?${params}`, {}, 6000);
+    if (validCoverUrl(data?.url)) {
+      console.info('cover_provider:self_hosted_goodreads');
+      return { url: data.url, source: 'self_hosted_goodreads' };
+    }
+  } catch {}
+  return null;
+}
+
+async function goodreadsCoverCandidate(env, { isbn, title, author }) {
+  const selfHosted = await selfHostedGoodreadsCoverCandidate(env, { isbn, title, author });
+  if (selfHosted) return selfHosted;
   const normalizedIsbn = normalizeIsbn(isbn);
   const lookups = [];
   if (normalizedIsbn) {
@@ -630,36 +652,41 @@ async function goodreadsCoverCandidate({ isbn, title, author }) {
   return null;
 }
 
-async function appleBooksCoverCandidate(title, author) {
+async function googleBooksCoverCandidate(env, { isbn, title, author }) {
+  if (!env.GOOGLE_BOOKS_API_KEY) return null;
   try {
-    const term = [title, author].filter(Boolean).join(' ');
-    const data = await fetchJson(`https://itunes.apple.com/search?term=${encodeURIComponent(term)}&country=US&media=ebook&entity=ebook&limit=5&explicit=No`, {}, 6000);
+    const params = new URLSearchParams({ maxResults: '10', printType: 'books', key: env.GOOGLE_BOOKS_API_KEY });
+    if (isbn) params.set('q', `isbn:${normalizeIsbn(isbn)}`);
+    else params.set('q', `intitle:${title} inauthor:${author}`);
+    const data = await fetchJson(`https://www.googleapis.com/books/v1/volumes?${params}`, {}, 6000);
     const titleKey = normalizeLookupText(title);
     const authorKey = normalizeLookupText(author);
-    const hit = (data?.results || []).find((book) => {
-      const candidateTitle = normalizeLookupText(book.trackName || book.collectionName);
-      const candidateAuthor = normalizeLookupText(book.artistName);
+    const hit = (data?.items || []).find((book) => {
+      const info = book.volumeInfo || {};
+      const candidateTitle = normalizeLookupText(info.title);
+      const candidateAuthor = normalizeLookupText((info.authors || []).join(' '));
       return candidateTitle === titleKey && (!authorKey || candidateAuthor.includes(authorKey) || authorKey.includes(candidateAuthor));
-    }) || data?.results?.[0];
-    const cover = String(hit?.artworkUrl100 || '').replace(/100x100(?:bb)?/i, '600x600bb');
+    }) || data?.items?.[0];
+    const links = hit?.volumeInfo?.imageLinks || {};
+    const cover = String(links.extraLarge || links.large || links.medium || links.thumbnail || '').replace(/^http:/, 'https:');
     if (validCoverUrl(cover)) {
-      console.info('cover_fallback:apple_books');
-      return { url: cover, source: 'apple_books' };
+      console.info('cover_provider:google_books');
+      return { url: cover, source: 'google_books' };
     }
   } catch {}
   return null;
 }
 
-async function resolveBookCover(input) {
+async function resolveBookCover(input, env) {
   if (validCoverUrl(input?.currentCover) && !isLowQualityCover(input.currentCover)) {
     return { url: input.currentCover, source: 'existing', preserved: true };
   }
 
-  const goodreads = await goodreadsCoverCandidate(input || {});
-  if (goodreads) return goodreads;
+  const google = await googleBooksCoverCandidate(env || {}, input || {});
+  if (google) return google;
 
-  const apple = await appleBooksCoverCandidate(input?.title, input?.author);
-  if (apple) return apple;
+  const goodreads = await goodreadsCoverCandidate(env || {}, input || {});
+  if (goodreads) return goodreads;
 
   const openLibrary = await openLibraryCandidate(input?.title, input?.author);
   if (validCoverUrl(openLibrary?.cover)) {
@@ -1688,7 +1715,7 @@ export default {
       const author = String(body?.author || '').trim();
       if (!title || !author) return json({ error: 'title and author required' }, 400, request, env);
       if (!rateLimit(`cover:${user.id}`, 60, 60_000)) return json({ error: 'Too many cover lookups' }, 429, request, env);
-      const result = await resolveBookCover({ title, author, isbn: body?.isbn, currentCover: body?.currentCover });
+      const result = await resolveBookCover({ title, author, isbn: body?.isbn, currentCover: body?.currentCover }, env);
       return json(result, 200, request, env);
     }
 
@@ -1712,7 +1739,7 @@ export default {
           continue;
         }
         try {
-          const resolved = await resolveBookCover({ title: book.title, author: book.author, isbn: book.isbn13, currentCover: book.cover_url });
+          const resolved = await resolveBookCover({ title: book.title, author: book.author, isbn: book.isbn13, currentCover: book.cover_url }, env);
           if (!validCoverUrl(resolved?.url) || resolved.url === book.cover_url) {
             result.skipped++;
           } else {
@@ -1807,92 +1834,6 @@ export default {
         }
       }
 
-      const apple = [];
-      const terms = [
-        'literary fiction',
-        'thriller',
-        'memoir',
-      ];
-
-      for (const term of terms) {
-        try {
-          const data = await fetchJson(
-            `https://itunes.apple.com/search?term=${encodeURIComponent(
-              term,
-            )}&country=US&media=ebook&entity=ebook&limit=8&explicit=No`,
-            {},
-            9000,
-          );
-
-          for (
-            const book of
-              data?.results || []
-          ) {
-            const title =
-              book.trackName ||
-              book.collectionName;
-
-            if (
-              !title ||
-              apple.some(
-                (existing) =>
-                  existing.title.toLowerCase() ===
-                  String(
-                    title,
-                  ).toLowerCase(),
-              )
-            ) {
-              continue;
-            }
-
-            apple.push({
-              key: `apple:${
-                book.trackId ||
-                book.collectionId
-              }`,
-              source: 'apple',
-              title,
-              author:
-                book.artistName ||
-                'Unknown author',
-              cover: String(
-                book.artworkUrl100 ||
-                  '',
-              ).replace(
-                '100x100',
-                '600x600',
-              ),
-              year:
-                Number(
-                  String(
-                    book.releaseDate ||
-                      '',
-                  ).slice(0, 4),
-                ) || undefined,
-              isbn:
-                book.isbn13 ||
-                undefined,
-              subjects:
-                book.genres || [],
-              storeUrl:
-                book.trackViewUrl ||
-                book.collectionViewUrl ||
-                '',
-            });
-
-            if (
-              apple.length >= 12
-            ) {
-              break;
-            }
-          }
-        } catch {}
-
-        if (apple.length >= 12) {
-          break;
-        }
-      }
-
       const nytConfigured =
         Boolean(
           env.NYT_BOOKS_API_KEY,
@@ -1908,8 +1849,6 @@ export default {
       return json(
         {
           nyt: nyt.slice(0, 10),
-          apple:
-            apple.slice(0, 10),
           nytConfigured,
           nytStatus,
           nytError:
