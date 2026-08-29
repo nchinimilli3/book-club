@@ -10,7 +10,7 @@ import { addCheckpointOptions, createCheckpoint, readingRoom, saveProgress, vote
 import { cacheContext, deleteMyAccount, exportMyData, getContext, getProfile, listNotifications, markAllNotificationsRead, markNotificationRead, updateProfile } from './account';
 import { changeMembership, createMargin, createMeetingQuestion, deleteLibrary, deleteMargin, getMemberProfile, getSettings, importLibrary, leaveClub, listArchive, listLibrary, listMargins, listMeetingQuestions, listMembers, patchLibrary, rateBook, resolveMeetingQuestion, updateBookStatus, updateSettings, upsertLibrary } from './product';
 import { calendarCallback, calendarStatus, disconnectCalendar, removeCalendarEvent, removeReadingPlan, startCalendar, syncMeeting, syncReadingPlan } from './calendar';
-import { bookDecision, enrichBook, meetingGuide, readerContext, resolveCover, transcribePassage } from './integrations';
+import { bookDecision, bookDiscovery, enrichBook, meetingGuide, readerContext, resolveCover, transcribePassage } from './integrations';
 import { loadWorkspace } from './workspace';
 import { bookAction, cancelMeetingAction, checkpointCheckin, createMeetingOptions, finalizeBallotAction, postAction, setMeetingOption, submitMeetingPollAction } from './actions';
 
@@ -27,6 +27,7 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   const session = await sessionFor(request, env);
   if (request.method === 'GET' && url.pathname === '/api/me') return json({ user: session?.user ?? null });
+  if (request.method === 'GET' && url.pathname === '/api/book-discovery') return bookDiscovery(env);
   if (request.method === 'GET' && url.pathname === '/api/profile') return getProfile(env, session);
   if (request.method === 'PUT' && url.pathname === '/api/profile') return updateProfile(request, env, session);
   if (request.method === 'GET' && url.pathname === '/api/account/export') return exportMyData(env, session);

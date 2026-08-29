@@ -3,6 +3,8 @@ import { requireMember, requireSession } from './authorization';
 import type { Env } from './env';
 import { body, HttpError, json, string } from './http';
 
+const NYT_BOOKS_OVERVIEW = 'https://api.nytimes.com/svc/books/v3/lists/overview.json';
+
 function outputText(payload: unknown): string {
   if (!payload || typeof payload !== 'object') return '';
   const value = payload as { output_text?: unknown; output?: Array<{ content?: Array<{ text?: unknown }> }> };
@@ -21,6 +23,34 @@ async function aiJson(env: Env, prompt: string): Promise<unknown> {
 function fallbackContext(title: string, author: string, subjects: string[] = []) {
   const themes = subjects.length ? `Catalog topics include ${subjects.slice(0, 6).join(', ')}.` : 'Reader context will appear here once source-backed material is available.';
   return { items: [{ id: 'fallback-context', kind: 'context', title: `About ${title}`, summary_short: author ? `${title} is by ${author}. ${themes}` : themes, summary_medium: themes, summary_deep: themes, spoiler_chapter: null, context_sources: [] }], ai: false, fallback: true };
+}
+
+export async function bookDiscovery(env: Env): Promise<Response> {
+  if (!env.NYT_BOOKS_API_KEY) return json({ nyt: [], nytConfigured: false, nytStatus: 'not_configured', apiReachable: true });
+  const url = new URL(NYT_BOOKS_OVERVIEW);
+  url.searchParams.set('api-key', env.NYT_BOOKS_API_KEY);
+  const response = await fetch(url);
+  const payload = await response.json().catch(() => ({})) as { results?: { lists?: Array<{ list_name?: string; books?: Array<Record<string, unknown>> }> }; fault?: { faultstring?: string } };
+  if (!response.ok) return json({ nyt: [], nytConfigured: true, nytStatus: 'error', nytError: `NYT request failed (${response.status}).`, apiReachable: true });
+  const nyt = (payload.results?.lists || []).flatMap(list => (list.books || []).map(book => {
+    const title = String(book.title || '').trim();
+    const author = String(book.author || '').trim();
+    const isbn = String(book.primary_isbn13 || book.primary_isbn10 || '').trim();
+    return {
+      key: `nyt:${isbn || `${title}:${author}`}`,
+      source: 'nyt' as const,
+      title,
+      author,
+      cover: String(book.book_image || '').trim(),
+      isbn: isbn || undefined,
+      subjects: [],
+      rank: Number(book.rank) || undefined,
+      weeksOnList: Number(book.weeks_on_list) || undefined,
+      listName: String(list.list_name || 'Best Sellers'),
+      storeUrl: String(book.amazon_product_url || '').trim() || undefined,
+    };
+  })).filter(book => book.title && book.author).slice(0, 36);
+  return json({ nyt, nytConfigured: true, nytStatus: 'ok', apiReachable: true });
 }
 
 export async function readerContext(request: Request, env: Env, session: AuthSession | null): Promise<Response> {
