@@ -9,6 +9,7 @@ async function sendEmail(env: Env, to: string, subject: string, html: string): P
     return;
   }
   if (env.AUTH_EMAIL_MODE === 'mailjet') {
+    console.log(JSON.stringify({ event: 'email_send_requested', provider: 'mailjet' }));
     let apiKey: string;
     let secretKey: string;
     try {
@@ -18,21 +19,27 @@ async function sendEmail(env: Env, to: string, subject: string, html: string): P
       console.error(JSON.stringify({ event: 'email_provider_error', provider: 'mailjet', category: 'missing_credentials' }));
       throw error;
     }
-    const response = await fetch('https://api.mailjet.com/v3.1/send', {
-      method: 'POST',
-      headers: {
-        authorization: `Basic ${btoa(`${apiKey}:${secretKey}`)}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        Messages: [{
-          From: { Email: required(env, 'MAILJET_FROM_EMAIL'), Name: env.MAILJET_FROM_NAME || 'BOOK CLUB' },
-          To: [{ Email: to }],
-          Subject: subject,
-          HTMLPart: html,
-        }],
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch('https://api.mailjet.com/v3.1/send', {
+        method: 'POST',
+        headers: {
+          authorization: `Basic ${btoa(`${apiKey}:${secretKey}`)}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          Messages: [{
+            From: { Email: required(env, 'MAILJET_FROM_EMAIL'), Name: env.MAILJET_FROM_NAME || 'BOOK CLUB' },
+            To: [{ Email: to }],
+            Subject: subject,
+            HTMLPart: html,
+          }],
+        }),
+      });
+    } catch (error) {
+      console.error(JSON.stringify({ event: 'email_provider_error', provider: 'mailjet', category: 'network_error' }));
+      throw error;
+    }
     const responseText = await response.text();
     if (!response.ok) {
       const normalized = responseText.toLowerCase();
