@@ -39,12 +39,12 @@ export function QuickPassageCapture(){
   const cameraRef=useRef<HTMLInputElement>(null),libraryRef=useRef<HTMLInputElement>(null),composerRef=useRef<HTMLTextAreaElement>(null);
   const[open,setOpen]=useState(false),[busy,setBusy]=useState(false),[saving,setSaving]=useState(false);
   const[result,setResult]=useState<PassageTranscription|null>(null),[error,setError]=useState(''),[saved,setSaved]=useState('');
-  const[draft,setDraft]=useState(''),[entryType,setEntryType]=useState<EntryType>('thought'),[visibility,setVisibility]=useState<Visibility>('private'),[editingPassage,setEditingPassage]=useState(false);
+  const[draft,setDraft]=useState(''),[pageNumber,setPageNumber]=useState(''),[entryType,setEntryType]=useState<EntryType>('thought'),[visibility,setVisibility]=useState<Visibility>('private'),[editingPassage,setEditingPassage]=useState(false);
   if(!a.user||!w||!cb)return null;
   const b=cb.book,currentChapter=w.myProgress?.chapter||undefined,currentPage=w.myProgress?.page||undefined;
-  const place=result?.pageNumber?`Page ${result.pageNumber}`:currentPage?`Page ${currentPage}`:result?.chapterNumber?`Chapter ${result.chapterNumber}`:currentChapter?`Chapter ${currentChapter}`:'';
+  const place=pageNumber.trim()?`Page ${pageNumber.trim()}`:result?.chapterNumber?`Chapter ${result.chapterNumber}`:currentChapter?`Chapter ${currentChapter}`:'';
 
-  function reset(){setResult(null);setError('');setBusy(false);setSaving(false);setSaved('');setDraft('');setEntryType('thought');setVisibility('private');setEditingPassage(false)}
+  function reset(){setResult(null);setError('');setBusy(false);setSaving(false);setSaved('');setDraft('');setPageNumber(currentPage?String(currentPage):'');setEntryType('thought');setVisibility('private');setEditingPassage(false)}
   function openComposer(){reset();setOpen(true);requestAnimationFrame(()=>composerRef.current?.focus())}
   function close(){setOpen(false);setTimeout(reset,180)}
 
@@ -54,7 +54,7 @@ export function QuickPassageCapture(){
       const imageDataUrl=await photoDataUrl(file);
       const next=await transcribePassage({imageDataUrl,title:b.title,author:b.author,currentChapter});
       if(!next.text.trim())throw new Error('I couldn’t find a readable passage in that photo.');
-      setResult(next);setEntryType('quote');setEditingPassage(Boolean(next.needsReview));
+      setResult(next);setPageNumber(next.pageNumber?String(next.pageNumber):(currentPage?String(currentPage):''));setEntryType('quote');setEditingPassage(Boolean(next.needsReview));
       requestAnimationFrame(()=>composerRef.current?.focus());
     }catch(err:any){setError(err?.message||'Could not read that passage. Try another photo.')}
     finally{setBusy(false);if(cameraRef.current)cameraRef.current.value='';if(libraryRef.current)libraryRef.current.value=''}
@@ -65,9 +65,11 @@ export function QuickPassageCapture(){
     const passage=result?.text.trim()||'';
     const thought=draft.trim();
     if(!passage&&!thought){setError('Write a thought or add a passage first.');composerRef.current?.focus();return}
+    const parsedPage=pageNumber.trim()?Number.parseInt(pageNumber.trim(),10):undefined;
+    if(pageNumber.trim()&&(parsedPage===undefined||!Number.isSafeInteger(parsedPage)||parsedPage<=0||parsedPage>100000)){setError('Enter a page number between 1 and 100,000.');return}
     setSaving(true);setError('');
     const chapter=result?.chapterNumber||currentChapter;
-    const page=result?.pageNumber||currentPage;
+    const page=parsedPage;
     try{
       if(passage){
         await saveQuote(cb.id,passage,thought||undefined,chapter,page);
@@ -106,6 +108,11 @@ export function QuickPassageCapture(){
             <textarea ref={composerRef} value={draft} onChange={e=>setDraft(e.target.value)} placeholder={result?'Why did this part matter? Add context if you want.':'Type the thought before you lose it…'} autoFocus/>
           </label>
 
+          <label className="quick-passage-page-number">
+            <span>Page number <small>Optional · you can add any page</small></span>
+            <input type="number" inputMode="numeric" min="1" max="100000" step="1" value={pageNumber} onChange={e=>setPageNumber(e.target.value)} placeholder="e.g. 111" aria-label="Page number"/>
+          </label>
+
           <fieldset className="quick-passage-types"><legend>Save as</legend><div>{types.map(type=><button key={type} type="button" className={entryType===type?'selected':''} aria-pressed={entryType===type} onClick={()=>setEntryType(type)}>{type[0].toUpperCase()+type.slice(1)}</button>)}</div></fieldset>
 
           <fieldset className="quick-passage-visibility"><legend>Visibility</legend><div>
@@ -120,7 +127,7 @@ export function QuickPassageCapture(){
           {saved&&<p className="quick-passage-saved" role="status"><Check/> {saved}</p>}
         </div>
 
-        <footer className="quick-passage-footer">{result?<button type="button" className="quick-passage-reset" onClick={()=>{setResult(null);setEntryType('thought');setEditingPassage(false);cameraRef.current?.click()}} disabled={busy||saving}><RotateCcw/> Scan another page</button>:<span/>}<button type="button" className="quick-passage-save" onClick={save} disabled={busy||saving||Boolean(saved)||(!draft.trim()&&!result?.text.trim())}>{saved?<><Check/> {saved}</>:saving?<><LoaderCircle/> Saving…</>:visibility==='club'?'Save & share':'Save privately'}</button></footer>
+        <footer className="quick-passage-footer">{result?<button type="button" className="quick-passage-reset" onClick={()=>{setResult(null);setPageNumber(currentPage?String(currentPage):'');setEntryType('thought');setEditingPassage(false);cameraRef.current?.click()}} disabled={busy||saving}><RotateCcw/> Scan another page</button>:<span/>}<button type="button" className="quick-passage-save" onClick={save} disabled={busy||saving||Boolean(saved)||(!draft.trim()&&!result?.text.trim())}>{saved?<><Check/> {saved}</>:saving?<><LoaderCircle/> Saving…</>:visibility==='club'?'Save & share':'Save privately'}</button></footer>
 
         <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={e=>void pick(e.target.files?.[0])}/>
         <input ref={libraryRef} hidden type="file" accept="image/*" onChange={e=>void pick(e.target.files?.[0])}/>

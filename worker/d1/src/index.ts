@@ -13,6 +13,7 @@ import { calendarCallback, calendarStatus, disconnectCalendar, removeCalendarEve
 import { bookDecision, bookDiscovery, enrichBook, meetingGuide, readerContext, resolveCover, transcribePassage } from './integrations';
 import { loadWorkspace } from './workspace';
 import { bookAction, cancelMeetingAction, checkpointCheckin, createMeetingOptions, finalizeBallotAction, postAction, setMeetingOption, submitMeetingPollAction } from './actions';
+import { cleanupProfileMedia, profileMediaPath, serveProfileMedia, updateProfileStyle } from './profileMedia';
 
 function pathParts(pathname: string): string[] { return pathname.split('/').filter(Boolean).map(decodeURIComponent); }
 
@@ -30,6 +31,9 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (request.method === 'GET' && url.pathname === '/api/book-discovery') return bookDiscovery(env);
   if (request.method === 'GET' && url.pathname === '/api/profile') return getProfile(env, session);
   if (request.method === 'PUT' && url.pathname === '/api/profile') return updateProfile(request, env, session);
+  if (request.method === 'PUT' && url.pathname === '/api/profile/style') return updateProfileStyle(request, env, session);
+  const profileMedia = request.method === 'GET' ? profileMediaPath(url.pathname) : null;
+  if (profileMedia) return serveProfileMedia(env, session, profileMedia.userId, profileMedia.kind, profileMedia.version);
   if (request.method === 'GET' && url.pathname === '/api/account/export') return exportMyData(env, session);
   if (request.method === 'DELETE' && url.pathname === '/api/account') return deleteMyAccount(env, session);
   if (request.method === 'GET' && url.pathname === '/api/settings') return getSettings(env, session);
@@ -199,7 +203,7 @@ export default {
   },
   scheduled(_controller, env, ctx): void {
     // Retires failed uploads and replaced objects without any browser polling.
-    ctx.waitUntil(cleanupMedia(env));
+    ctx.waitUntil(Promise.all([cleanupMedia(env), cleanupProfileMedia(env)]).then(() => undefined));
   },
 } satisfies ExportedHandler<Env>;
 

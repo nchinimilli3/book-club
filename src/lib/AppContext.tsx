@@ -129,7 +129,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     let authenticatedUser: User | null = null;
     try {
-      const { data: { session }, error: sessionError } = await withTimeout(supabase.auth.getSession(), 10000);
+      const legacySession = await withTimeout<{ data: { session: { user: User } | null }; error?: Error | null }>(supabase.auth.getSession(), 10000);
+      const { data: { session }, error: sessionError } = legacySession;
       if (sessionError) throw sessionError;
       const u = session?.user ?? null;
       authenticatedUser=u;
@@ -232,7 +233,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (cloudBackend) return;
     if (!supabase) return;
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: { user?: User } | null) => {
       setUser(session?.user ?? null);
       if (session?.user) void refresh();
     });

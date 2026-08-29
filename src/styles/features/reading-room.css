@@ -68,6 +68,7 @@
   .reading-tabs{margin-left:-18px;margin-right:-18px;padding:0 18px;width:auto;gap:24px}
 }@media(max-width:700px){.reading-tabs button{min-height:50px}
 }
+
 @media(max-width:700px){.reading-plan-milestones>li{grid-template-columns:78px 12px minmax(0,1fr);gap:12px}
 }@media(max-width:700px){.reading-plan-milestones b{font-size:21px}
 }@media(max-width:700px){.reading-plan-meeting{display:grid}
@@ -1152,4 +1153,25 @@
   .reading-room .reading-plan-calendar-actions .reading-plan-utility-link::after{content:none!important}
   .reading-room .reading-plan-calendar-actions span{display:block!important;font:760 11px/1.15 var(--sans)!important}
   .reading-room .reading-plan-remove-calendar{justify-self:center;margin-top:2px!important;min-height:44px!important;padding:0 8px!important;font-size:12px!important;text-decoration:underline!important;text-underline-offset:3px}
+}
+
+/* Final mobile quick-add overrides keep the editable page reference and the
+   scan reset action aligned with the rest of the compact button system. */
+.quick-passage-page-number{display:grid;grid-template-columns:minmax(0,1fr) 120px;align-items:center;gap:14px;padding-top:2px}
+.quick-passage-page-number>span{display:grid;gap:3px;font-size:11px;font-weight:820;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.quick-passage-page-number>span small{font-size:10px;font-weight:550;letter-spacing:0;text-transform:none;color:var(--muted)}
+.quick-passage-page-number input{width:100%;height:42px;box-sizing:border-box;border:1px solid var(--line-strong);border-radius:9px;background:#fbfbfa;color:var(--ink);padding:0 11px;font:700 14px var(--sans);font-variant-numeric:tabular-nums}
+.quick-passage-page-number input:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 3px rgba(30,30,30,.06);background:#fff}
+@media(max-width:760px){
+  .quick-passage-page-number{grid-template-columns:minmax(0,1fr) 92px;gap:10px}
+  .quick-passage-page-number input{height:36px;padding-inline:9px;font-size:12px}
+  .quick-passage-footer{grid-template-columns:minmax(0,auto) minmax(0,1fr)!important;gap:8px}
+  .quick-passage-footer .quick-passage-reset{display:inline-flex!important;width:auto!important;min-width:0!important;height:40px;padding:0 11px;font-size:11px;white-space:nowrap}
+  .quick-passage-footer .quick-passage-reset svg{display:block;width:16px;height:16px}
+  .quick-passage-footer .quick-passage-save{min-width:0}
+  .quick-passage-composer{overflow:auto}
+}
+@media(max-width:420px){
+  .quick-passage-page-number{grid-template-columns:minmax(0,1fr) 86px}
+  .quick-passage-footer .quick-passage-reset{padding-inline:9px;font-size:10.5px}
 }

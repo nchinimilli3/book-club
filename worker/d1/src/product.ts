@@ -64,6 +64,9 @@ export async function updateSettings(request: Request, env: Env, session: AuthSe
   const style = input.style === undefined ? undefined : JSON.stringify(input.style);
   const avoidances = input.readingAvoidances === undefined ? undefined : JSON.stringify(Array.isArray(input.readingAvoidances) ? input.readingAvoidances.map(String).slice(0, 30) : []);
   const moods = input.readingMoods === undefined ? undefined : JSON.stringify(Array.isArray(input.readingMoods) ? input.readingMoods.map(String).slice(0, 30) : []);
+  if (style && /"(?:avatarUrl|wallpaperUrl)"\s*:\s*"data:image\//i.test(style)) {
+    throw new HttpError(400, 'Profile images must be uploaded through the profile media flow.', 'profile_media_required');
+  }
   if (style && style.length > 50_000) throw new HttpError(413, 'Profile style is too large.', 'payload_too_large');
   const existing = await env.DB.prepare('SELECT username, profile_style_json, notification_mode, reading_avoidances_json, reading_moods_json, timezone FROM user_settings WHERE user_id = ?').bind(session.user.id).first<Record<string, string | null>>();
   const now = Date.now();

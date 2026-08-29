@@ -72,7 +72,7 @@ export function ProfilePage(){
     const cached=readProfileStyleCache(a.user.id);
     if(cached?.pending){
       setStyle(cached.style);a.applyProfileStyle(cached.style);
-      setSyncError('Your sticker layout is saved on this device but still needs to sync.');
+      setSyncError('Your profile changes are saved on this device but still need to sync.');
       return;
     }
     setStyle(a.profile?.style||defaultStyle);
@@ -85,7 +85,7 @@ export function ProfilePage(){
     let cancelled=false;
     const sync=async()=>{
       if(cancelled||!navigator.onLine)return;
-      try{const persisted=await updateProfileStyle(userId,cached.style);if(cancelled)return;setStyle(persisted);a.applyProfileStyle(persisted);writeProfileStyleCache(userId,persisted,false);setSyncError('');setNotice('Sticker layout synced to the cloud.')}catch(err:any){if(!cancelled)setSyncError(err?.message||'Your sticker layout is saved here and will retry automatically.')}
+      try{const persisted=await updateProfileStyle(userId,cached.style);if(cancelled)return;setStyle(persisted);a.applyProfileStyle(persisted);writeProfileStyleCache(userId,persisted,false);setSyncError('');setNotice('Profile changes synced to the cloud.')}catch(err:any){if(!cancelled)setSyncError(err?.message||'Your profile changes are saved here and will retry automatically.')}
     };
     const timer=window.setTimeout(()=>void sync(),900);
     const onOnline=()=>void sync();window.addEventListener('online',onOnline);

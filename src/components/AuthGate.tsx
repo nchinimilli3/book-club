@@ -111,7 +111,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     }
     if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session as Session | null);
+      setSession(data.session as unknown as Session | null);
       setChecking(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, nextSession: unknown) => {

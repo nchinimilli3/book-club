@@ -45,7 +45,7 @@ export async function savePersonalBook(_userId: string, value: { title: string; 
   const result: any = await cloudApi.saveLibraryBook({ title: value.title, author: value.author, coverUrl: value.cover, publishedYear: value.year, isbn: value.isbn, pages: value.pages, description: value.description, shelf: options.shelf, rating: options.rating, dateFinished: options.dateFinished, isFavorite: options.isFavorite, source: options.source }); return result.book?.id;
 }
 export async function updatePersonalBook(_userId: string, libraryId: string, patch: { shelf?: string; rating?: number | null; dateFinished?: string | null; isFavorite?: boolean; isPublic?: boolean }) { return cloudApi.updateLibraryBook(libraryId, patch); }
-export async function updateProfileStyle(_userId: string, style: ProfileStyle): Promise<ProfileStyle> { const result: any = await cloudApi.updateSettings({ style }); return result.settings?.style || style; }
+export async function updateProfileStyle(_userId: string, style: ProfileStyle): Promise<ProfileStyle> { const result: any = await cloudApi.updateProfileStyle(style as Record<string, unknown>); return (result.style || style) as ProfileStyle; }
 export async function saveClubCoverImage(clubId: string, image: Blob | null, _previousPath?: string) { if (!image) return cloudApi.resetHeader(clubId); return cloudApi.uploadHeader(clubId, image); }
 export async function getBookContext(_bookId: string, _chapter?: number) { return []; }
 export async function repairBookCover(_bookId: string, _coverUrl: string) { return false; }

@@ -44,6 +44,7 @@ export const cloudApi = {
   addCheckpointOptions: (clubId: string, checkpointId: string, startsAt: number[]) => request(`/api/clubs/${encodeURIComponent(clubId)}/checkpoints/${encodeURIComponent(checkpointId)}/options`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ startsAt }) }),
   voteCheckpointOption: (clubId: string, checkpointId: string, optionId: string, available: boolean) => request(`/api/clubs/${encodeURIComponent(clubId)}/checkpoints/${encodeURIComponent(checkpointId)}/vote`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ optionId, available }) }),
   profile: () => request('/api/profile'),
+  updateProfileStyle: (style: Record<string, unknown>) => request<{ style: Record<string, unknown> }>('/api/profile/style', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ style }) }),
   updateProfile: (name: string, image?: string) => request('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, image }) }),
   settings: () => request('/api/settings'),
   updateSettings: (settings: Record<string, unknown>) => request('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(settings) }),

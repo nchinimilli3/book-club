@@ -186,3 +186,23 @@
 
 @media(max-width:720px){.goodreads-import-sheet .sheet-head h2{white-space:nowrap}}
 .profile-avatar-placeholder{display:grid;place-items:center;background:linear-gradient(145deg,#f4e7d3,#bb8e6d);color:#3d2b20;font:700 37px var(--serif);border-color:rgba(255,255,255,.9)}.profile-image-controls .image-status{min-height:15px;font-size:10px;line-height:1.25;color:#55705a;pointer-events:none}.profile-image-controls .image-status.error{color:#9c3d38}.profile-customizer-actions{position:sticky;bottom:-28px;z-index:2;margin:4px -28px -28px;padding:15px 28px max(15px,env(safe-area-inset-bottom));border-top:1px solid var(--line);background:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px}.profile-customizer-actions>span{font-size:12px;font-weight:650;color:#55705a}.profile-customizer-actions>div{display:flex;gap:10px}.profile-customizer-sheet{overflow:hidden}.profile-customizer-sheet .profile-customizer{max-height:calc(82vh - 104px);overflow:auto;padding-right:2px}.profile-customizer-sheet .sheet-head{position:sticky;top:0;z-index:3;background:#fff}@media(max-width:720px){.profile-customizer-sheet{width:calc(100vw - 24px);max-height:calc(100dvh - 24px);padding:20px}.profile-customizer-sheet .profile-customizer{max-height:calc(100dvh - 126px);padding-bottom:8px}.profile-customizer-actions{bottom:-20px;margin:4px -20px -20px;padding:13px 20px max(13px,env(safe-area-inset-bottom));align-items:flex-start;flex-direction:column}.profile-customizer-actions>div{width:100%;display:grid;grid-template-columns:1fr 1.25fr}.profile-image-controls{gap:8px}.profile-image-controls label{min-height:88px;padding:10px}.profile-image-controls .image-status{font-size:9px}.profile-custom-avatar.profile-avatar-placeholder{width:66px;height:66px;font-size:29px}}
+@media(max-width:720px){
+  .profile-scrapbook-hero{aspect-ratio:auto;min-height:326px;padding:22px 18px 26px;align-content:start;overflow:hidden}
+  .profile-scrapbook-hero .profile-identity{position:relative;z-index:4;padding:0 4px;max-width:68%;align-self:start}
+  .profile-scrapbook-hero .profile-identity h1{font-size:clamp(34px,9vw,54px);max-width:100%;overflow-wrap:anywhere}
+  .profile-scrapbook-hero .profile-hero-actions{position:relative;z-index:5;display:flex;flex-wrap:nowrap;gap:5px;margin-top:16px;max-width:calc(100vw - 48px)}
+  .profile-scrapbook-hero .profile-hero-actions .secondary{min-height:38px;padding:0 9px;font-size:11px;gap:4px;white-space:nowrap}
+  .profile-scrapbook-hero .profile-hero-actions .secondary svg{width:14px;height:14px}
+  .profile-scrapbook-hero .profile-hero-actions .icon-button{width:38px;height:38px;flex:0 0 38px}
+  .profile-scrapbook-hero .profile-cover-collage{z-index:1;right:2px;top:18px;width:44%;min-height:190px;transform:scale(.66);transform-origin:top right;opacity:.62}
+}
+@media(max-width:380px){
+  .profile-scrapbook-hero{min-height:344px}
+  .profile-scrapbook-hero .profile-identity{max-width:72%}
+  .profile-scrapbook-hero .profile-hero-actions .secondary{padding-inline:7px;font-size:10px}
+}
+@media(max-width:720px){
+  .import-notice.sync-warning{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;margin-bottom:76px;padding:12px 0;line-height:1.35}
+  .import-notice.sync-warning>span{min-width:0;overflow-wrap:anywhere}
+  .import-notice.sync-warning button{min-height:40px;padding:0 11px;white-space:nowrap}
+}
