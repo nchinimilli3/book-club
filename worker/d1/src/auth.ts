@@ -106,11 +106,14 @@ export function createAuth(env: Env) {
     trustedOrigins,
     advanced: { useSecureCookies: secure, defaultCookieAttributes: { sameSite: 'lax', httpOnly: true, secure } },
     emailAndPassword: {
-      enabled: true, requireEmailVerification: true, minPasswordLength: 12,
+      // Launch mode: friends can use an email/password account immediately.
+      // Email verification can be restored once a reliably authenticated
+      // sending domain is available, without changing account data.
+      enabled: true, requireEmailVerification: false, minPasswordLength: 12,
       sendResetPassword: async ({ user, url }) => sendEmail(env, user.email, 'Reset your BOOK CLUB password', safeLink(url, 'Use this secure link to reset your password.')),
     },
     emailVerification: {
-      sendOnSignUp: true, autoSignInAfterVerification: true,
+      sendOnSignUp: false, autoSignInAfterVerification: true,
       sendVerificationEmail: async ({ user, url }) => sendEmail(env, user.email, 'Verify your BOOK CLUB email', safeLink(url, 'Confirm your email address to activate BOOK CLUB.')),
     },
     // Email/password remains available when Google OAuth has not been set up.
