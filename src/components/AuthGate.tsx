@@ -5,12 +5,72 @@ import { BootScreen } from './BootScreen';
 import { cloudApi } from '../lib/cloudApi';
 
 const cloudBackend = import.meta.env.VITE_BACKEND === 'd1';
+const turnstileSiteKey = String(import.meta.env.VITE_TURNSTILE_SITE_KEY || '');
+
+type TurnstileApi = {
+  render: (container: HTMLElement, options: { sitekey: string; theme?: 'light' | 'dark' | 'auto'; callback: (token: string) => void; 'expired-callback'?: () => void; 'error-callback'?: () => void }) => string;
+  remove: (widgetId: string) => void;
+};
+
+declare global {
+  interface Window { turnstile?: TurnstileApi; }
+}
+
+let turnstileScript: Promise<void> | undefined;
+function loadTurnstile(): Promise<void> {
+  if (window.turnstile) return Promise.resolve();
+  if (turnstileScript) return turnstileScript;
+  turnstileScript = new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>('script[data-turnstile]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Security check could not load.')), { once: true });
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    script.async = true;
+    script.defer = true;
+    script.dataset.turnstile = 'true';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Security check could not load.'));
+    document.head.appendChild(script);
+  });
+  return turnstileScript;
+}
+
+function TurnstileWidget({ onToken }: { onToken: (token: string) => void }) {
+  const [element, setElement] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!turnstileSiteKey || !element) return;
+    let widgetId: string | undefined;
+    let active = true;
+    void loadTurnstile().then(() => {
+      if (!active || !window.turnstile) return;
+      widgetId = window.turnstile.render(element, {
+        sitekey: turnstileSiteKey,
+        theme: 'light',
+        callback: onToken,
+        'expired-callback': () => onToken(''),
+        'error-callback': () => onToken(''),
+      });
+    }).catch(() => onToken(''));
+    return () => {
+      active = false;
+      if (widgetId && window.turnstile) window.turnstile.remove(widgetId);
+    };
+  }, [element, onToken]);
+  if (!turnstileSiteKey) return null;
+  return <div className="auth-captcha" ref={setElement} aria-label="Security check" />;
+}
 
 type Session = { user: { id: string; email: string; name: string } };
 type Mode = 'welcome' | 'signup' | 'signin' | 'forgot' | 'reset-password' | 'check-email';
 const authBase = () => String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-async function authPost(path: string, payload: Record<string, unknown>) {
-  const response = await fetch(`${authBase()}${path}`, { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+async function authPost(path: string, payload: Record<string, unknown>, captchaToken = '') {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (captchaToken) headers['x-captcha-response'] = captchaToken;
+  const response = await fetch(`${authBase()}${path}`, { method: 'POST', credentials: 'include', headers, body: JSON.stringify(payload) });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.message || 'Authentication request failed.');
   return body;
@@ -38,6 +98,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [captchaToken, setCaptchaToken] = useState('');
 
   useEffect(() => {
     if (cloudBackend) {
@@ -75,7 +136,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     setLoading(true);
     if (cloudBackend) {
       try {
-        await authPost('/api/auth/sign-up/email', { name: displayName.trim(), email: email.trim(), password, callbackURL: window.location.origin });
+        if (turnstileSiteKey && !captchaToken) throw new Error('Complete the security check, then try again.');
+        await authPost('/api/auth/sign-up/email', { name: displayName.trim(), email: email.trim(), password, callbackURL: window.location.origin }, captchaToken);
         const next = await cloudApi.session();
         setLoading(false);
         if (next.user) setSession({ user: next.user }); else setMode('check-email');
@@ -105,7 +167,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     setLoading(true);
     if (cloudBackend) {
       try {
-        const payload = await authPost('/api/auth/sign-in/email', { email: email.trim(), password });
+        if (turnstileSiteKey && !captchaToken) throw new Error('Complete the security check, then try again.');
+        const payload = await authPost('/api/auth/sign-in/email', { email: email.trim(), password }, captchaToken);
         setSession({ user: payload.user || (await cloudApi.session()).user! });
       } catch (e) { setError(e instanceof Error ? e.message : 'Could not sign in.'); }
       setLoading(false);
@@ -144,7 +207,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     if (!email.trim()) return setError('Enter your email.');
     setLoading(true);
     if (cloudBackend) {
-      try { await authPost('/api/auth/request-password-reset', { email: email.trim(), redirectTo: `${window.location.origin}${window.location.pathname}` }); setMessage('Check your inbox for the password reset link.'); }
+      try {
+        if (turnstileSiteKey && !captchaToken) throw new Error('Complete the security check, then try again.');
+        await authPost('/api/auth/request-password-reset', { email: email.trim(), redirectTo: `${window.location.origin}${window.location.pathname}` }, captchaToken);
+        setMessage('Check your inbox for the password reset link.');
+      }
       catch (e) { setError(e instanceof Error ? e.message : 'Could not send a reset link.'); }
       finally { setLoading(false); }
       return;
@@ -231,6 +298,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               <button type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button>
             </div>
 
+            <TurnstileWidget onToken={setCaptchaToken} />
             {error && <p className="auth-error">{error}</p>}
             <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Creating account…' : 'Create account'}</button>
             <button type="button" className="auth-secondary oauth-button" onClick={() => void continueWithGoogle()} disabled={loading}>
@@ -256,6 +324,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               <button type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button>
             </div>
 
+            <TurnstileWidget onToken={setCaptchaToken} />
             {error && <p className="auth-error">{error}</p>}
             <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'}</button>
             <button type="button" className="auth-inline-link" onClick={() => { setMode('forgot'); setError(''); setMessage(''); }}>Forgot password?</button>
@@ -270,6 +339,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             <h1>Check your inbox next.</h1>
             <label htmlFor="reset-email">Email</label>
             <input id="reset-email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
+            <TurnstileWidget onToken={setCaptchaToken} />
             {error && <p className="auth-error">{error}</p>}
             {message && <p className="auth-success">{message}</p>}
             <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Sending…' : 'Send reset link'}</button>
