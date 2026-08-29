@@ -20,7 +20,9 @@ APP_ORIGIN = "https://book-club-cog.pages.dev"
 # Explicit production plus the current Pages preview URL. Keep this list exact;
 # do not use a wildcard for credentialed auth requests.
 APP_ALLOWED_ORIGINS = "https://cfb665b8.book-club-cog.pages.dev"
-AUTH_BASE_URL = "https://book-club-api-next.postgradplans.workers.dev"
+# Public auth URLs, OAuth callbacks, and cookies are served through the
+# same-origin Pages /api proxy—not directly from workers.dev.
+AUTH_BASE_URL = "https://book-club-cog.pages.dev"
 RESEND_FROM = "BOOK CLUB <hello@example.com>"
 AUTH_EMAIL_MODE = "mailjet"
 MAILJET_FROM_EMAIL = "nchinimilli5@gmail.com"

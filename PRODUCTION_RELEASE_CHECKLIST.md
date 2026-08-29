@@ -4,7 +4,7 @@
 
 - Keep the Cloudflare maintenance switch enabled until preview acceptance is complete; do not expose the public route while a release check is failing.
 - Review Cloudflare Workers, D1, and R2 usage before promotion. Keep the application-level R2 cap at 500 MB and investigate traffic well before any provider allowance is exhausted.
-- Do not use Supabase as a runtime fallback in Cloudflare mode. The D1 build must use explicit `VITE_BACKEND=d1` and `VITE_API_BASE_URL` values.
+- Do not use Supabase as a runtime fallback in Cloudflare mode. The D1 build uses `VITE_BACKEND=d1`; production API calls stay same-origin through the Pages `/api/*` proxy.
 - Confirm refresh-on-return behavior: no idle-tab polling, one scoped reconciliation on tab focus, and no full workspace reload for a small mutation.
 
 A failed item is a blocker. Do not add a frontend fallback to hide a backend/privacy failure.

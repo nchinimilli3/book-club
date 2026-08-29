@@ -16,38 +16,12 @@ import { bookAction, cancelMeetingAction, checkpointCheckin, createMeetingOption
 
 function pathParts(pathname: string): string[] { return pathname.split('/').filter(Boolean).map(decodeURIComponent); }
 
-async function startGoogleSignIn(request: Request, env: Env): Promise<Response> {
-  // Begin OAuth as a top-level navigation. The Pages site and Worker have
-  // different hosts, and Safari can discard OAuth state cookies set during a
-  // cross-origin fetch. Calling Better Auth internally lets us keep its JSON
-  // contract while returning its state cookie on this first-party response.
-  const authRequest = new Request(new URL('/api/auth/sign-in/social', env.AUTH_BASE_URL), {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      origin: env.APP_ORIGIN,
-      ...(request.headers.get('user-agent') ? { 'user-agent': request.headers.get('user-agent')! } : {}),
-    },
-    body: JSON.stringify({ provider: 'google', callbackURL: env.APP_ORIGIN }),
-  });
-  const authResponse = await createAuth(env).handler(authRequest);
-  const payload = await authResponse.json().catch(() => ({})) as { url?: unknown };
-  if (!authResponse.ok || typeof payload.url !== 'string' || !payload.url) {
-    throw new HttpError(502, 'Could not start Google sign in. Please try again.', 'oauth_start_failed');
-  }
-  const headers = new Headers({ location: payload.url, 'cache-control': 'no-store' });
-  const stateCookie = authResponse.headers.get('set-cookie');
-  if (stateCookie) headers.set('set-cookie', stateCookie);
-  return new Response(null, { status: 302, headers });
-}
-
 async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   if (request.method === 'OPTIONS') return noContent();
   if (url.pathname === '/health') return json({ ok: true, backend: 'd1-r2' });
 
   // Better Auth owns these routes, OAuth state, password hashing and cookies.
-  if (request.method === 'GET' && url.pathname === '/api/auth/google/start') return startGoogleSignIn(request, env);
   if (url.pathname.startsWith('/api/auth/')) return createAuth(env).handler(request);
   if (request.method === 'GET' && url.pathname === '/api/calendar/callback') return calendarCallback(request, env);
 

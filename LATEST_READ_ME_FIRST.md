@@ -21,7 +21,7 @@ Cloudflare Pages frontend variables:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY` (publishable client key only)
 
-Production API routing is same-origin. `functions/api/[[path]].ts` forwards `/api/*` to the separately deployed `book-club-api` Worker through the `BOOK_CLUB_API` service binding declared in the root `wrangler.toml`. **Do not put the NYT key in a `VITE_*` variable.**
+Production API routing is same-origin. `functions/api/[[path]].ts` forwards `/api/*` to the separately deployed `book-club-api-next` Worker through the `BOOK_CLUB_API` service binding declared in the root `wrangler.toml`. **Do not put the NYT key in a `VITE_*` variable.**
 
 For local Vite development only, set `VITE_API_BASE_URL` to the local or deployed API Worker origin.
 

@@ -1,14 +1,14 @@
 # NYT Best Sellers production check
 
-The NYT API key stays only on the `book-club-api` Worker as `NYT_BOOKS_API_KEY`.
+The NYT API key stays only on the `book-club-api-next` Worker as `NYT_BOOKS_API_KEY`.
 
-Production now uses a same-origin Pages endpoint. `functions/api/[[path]].ts` forwards `/api/*` to the `book-club-api` Worker through the `BOOK_CLUB_API` Service Binding declared in the root `wrangler.toml`.
+Production now uses a same-origin Pages endpoint. `functions/api/[[path]].ts` forwards `/api/*` to the `book-club-api-next` Worker through the `BOOK_CLUB_API` Service Binding declared in the root `wrangler.toml`.
 
 ## Deploy
 
-1. Deploy `worker/` as the Worker named `book-club-api` and confirm `NYT_BOOKS_API_KEY` exists as a Worker secret.
-2. Deploy the Pages project from this updated source. The root `wrangler.toml` declares `BOOK_CLUB_API -> book-club-api`.
-3. If your existing Pages project does not adopt the binding from Wrangler, add it in Cloudflare Dashboard: Pages project > Settings > Bindings > Add > Service binding. Variable name: `BOOK_CLUB_API`. Service: `book-club-api`. Then redeploy Pages.
+1. Deploy `worker/d1/` as the Worker named `book-club-api-next` and confirm `NYT_BOOKS_API_KEY` exists as a Worker secret.
+2. Deploy the Pages project from this updated source. The root `wrangler.toml` declares `BOOK_CLUB_API -> book-club-api-next`.
+3. If your existing Pages project does not adopt the binding from Wrangler, add it in Cloudflare Dashboard: Pages project > Settings > Bindings > Add > Service binding. Variable name: `BOOK_CLUB_API`. Service: `book-club-api-next`. Then redeploy Pages.
 
 ## Verify
 

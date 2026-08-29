@@ -206,10 +206,16 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     setError('');
     setLoading(true);
     if (cloudBackend) {
-      // This must be a top-level navigation, rather than a cross-origin fetch.
-      // Safari can reject the short-lived OAuth state cookie set by a background
-      // request to the Worker, which makes Google's callback fail state checks.
-      window.location.assign(`${authBase()}/api/auth/google/start`);
+      try {
+        // Production calls the same-origin Pages /api proxy, so Better Auth can
+        // safely store and validate its OAuth state cookie on the app's host.
+        const payload = await authPost('/api/auth/sign-in/social', { provider: 'google', callbackURL: window.location.origin });
+        if (typeof payload.url !== 'string' || !payload.url) throw new Error('Could not start Google sign in.');
+        window.location.assign(payload.url);
+      } catch (e) {
+        setLoading(false);
+        setError(e instanceof Error ? e.message : 'Could not start Google sign in.');
+      }
       return;
     }
     if (!supabase) { setLoading(false); return; }
