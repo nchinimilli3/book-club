@@ -11,20 +11,33 @@
     "test:audit": "node scripts/release-audit.mjs && node scripts/audit-contract.mjs",
     "test:release": "tsc -b --pretty false && node scripts/smoke.mjs && node scripts/release-audit.mjs && node scripts/audit-contract.mjs && node --check worker/index.js && node scripts/audit-ui-primitives.mjs",
     "test:ui": "node scripts/audit-ui-primitives.mjs",
-    "audit:css": "node scripts/audit-css-architecture.mjs"
+    "audit:css": "node scripts/audit-css-architecture.mjs",
+    "worker:next:dev": "wrangler dev --config worker/d1/wrangler.toml --local",
+    "preworker:next:dev": "wrangler d1 migrations apply book-club-preview --local --config worker/d1/wrangler.toml",
+    "worker:next:setup": "wrangler d1 migrations apply book-club-preview --local --config worker/d1/wrangler.toml",
+    "worker:next:types": "wrangler types --config worker/d1/wrangler.toml",
+    "worker:next:check": "tsc -p worker/d1/tsconfig.json --pretty false",
+    "cloud:check": "tsc -p tsconfig.cloudflare.json --pretty false",
+    "worker:next:deploy": "wrangler deploy --config worker/d1/wrangler.toml"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.56.0",
+    "better-auth": "^1.7.2",
     "lucide-react": "^0.468.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "resend": "^6.25.0"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@cloudflare/workers-types": "^5.20260828.1",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^4.3.4",
     "postcss": "^8.5.26",
     "typescript": "^5.7.2",
-    "vite": "^6.0.5"
+    "vite": "^6.0.5",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.127.1"
   }
 }

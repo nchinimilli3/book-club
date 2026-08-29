@@ -4,7 +4,7 @@ export type Phase = 'setup'|'choosing'|'acquiring'|'reading'|'planning_meeting'|
 export type PlacedSticker = { id:string; key:string; x:number; y:number; r:number; s:number; z:number };
 export type ProfileStyle = { palette?:'paper'|'rose'|'olive'|'gold'|'plum'|'blue'; layout?:'editorial'|'scrapbook'|'clean'; note?:string; stickers?:PlacedSticker[]; wallpaperUrl?:string; avatarUrl?:string };
 export type Profile = { id:string; displayName:string; username?:string; avatarUrl?:string; style?:ProfileStyle };
-export type Book = { id:string; title:string; author:string; coverUrl?:string; description?:string; pages?:number; year?:number; isbn?:string };
+export type Book = { id:string; title:string; author:string; coverUrl?:string; description?:string; pages?:number; year?:number; isbn?:string; subjects?:string[] };
 export type Club = { id:string; name:string; ownerId:string; tone:Tone; phase:Phase; inviteCode?:string; coverImageUrl?:string; memberCount:number; progressScene?:ProgressScene };
 export type Member = Profile & { role:string; chapter?:number; page?:number; percent?:number; status?:string; format?:string };
 export type SuggestedReadingPlan = { generatedAt?:string; durationDays?:number; checkpointCount?:number; basis?:'chapters'|'pages'|'duration'; total?:number; checkpoints?:Array<{day:number;targetChapter?:number;targetPage?:number;progressPercent?:number}> };
@@ -32,6 +32,7 @@ export type Workspace = {
   acquired:number;
   myProgress?:{chapter?:number; page?:number; percent?:number; status?:string; format?:string};
   archiveBooks:Book[];
+  archiveBookCount:number;
   myClubRating?:ClubRating;
   lockedPostCount:number;
   meetingQuestions:MeetingQuestion[];

@@ -63,6 +63,27 @@
   }
 }
 
+@media (max-width:700px){
+  .new-club-primary-actions button,
+  .new-club-vote,
+  .new-club-top-actions button,
+  .new-club-members>button { transition: transform .18s ease, box-shadow .18s ease; }
+  .new-club-primary-actions button:active,
+  .new-club-vote:active,
+  .new-club-top-actions button:active { transform: translateY(1px) scale(.99); }
+  .new-club-primary-actions .primary { box-shadow: 0 8px 22px rgba(0,0,0,.2); }
+  .new-club-members>button:focus-visible,
+  .new-club-primary-actions button:focus-visible,
+  .new-club-vote:focus-visible { outline: 3px solid rgba(255,255,255,.9); outline-offset: 3px; }
+}
+
+@media (prefers-reduced-motion:reduce){
+  .new-club-primary-actions button,
+  .new-club-vote,
+  .new-club-top-actions button,
+  .new-club-members>button { transition: none; }
+}
+
 /* Mobile onboarding: keep the first-book decision compact and above the app nav. */
 @media (max-width: 700px) {
   html:has(.new-club-page),

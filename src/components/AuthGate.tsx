@@ -1,9 +1,20 @@
 import { FormEvent, useEffect, useState } from 'react';
-import type { Session } from '@supabase/supabase-js';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { isSupabaseConfigured, supabase } from '@book-club/supabase';
+import { BootScreen } from './BootScreen';
+import { cloudApi } from '../lib/cloudApi';
 
+const cloudBackend = import.meta.env.VITE_BACKEND === 'd1';
+
+type Session = { user: { id: string; email: string; name: string } };
 type Mode = 'welcome' | 'signup' | 'signin' | 'forgot' | 'reset-password' | 'check-email';
+const authBase = () => String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+async function authPost(path: string, payload: Record<string, unknown>) {
+  const response = await fetch(`${authBase()}${path}`, { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.message || 'Authentication request failed.');
+  return body;
+}
 
 function GoogleMark() {
   return (
@@ -17,8 +28,8 @@ function GoogleMark() {
 }
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [checking, setChecking] = useState(isSupabaseConfigured);
+  const [session, setSession] = useState<Session | { user: { id: string; email: string; name: string } } | null>(null);
+  const [checking, setChecking] = useState(cloudBackend || isSupabaseConfigured);
   const [mode, setMode] = useState<Mode>('welcome');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -29,38 +40,49 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
+    if (cloudBackend) {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('token')) setMode('reset-password');
+      if (params.get('error')) setError('That password-reset link is invalid or has expired. Request a new one.');
+      cloudApi.session().then(({ user }) => setSession(user ? { user } : null)).catch(() => setSession(null)).finally(() => setChecking(false));
+      return;
+    }
     if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+      setSession(data.session as Session | null);
       setChecking(false);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
-      setSession(nextSession);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, nextSession: unknown) => {
+      setSession(nextSession as Session | null);
       if (event === 'PASSWORD_RECOVERY') { setMode('reset-password'); setError(''); setMessage(''); }
     });
     return () => subscription.unsubscribe();
   }, []);
 
-  if (!isSupabaseConfigured) return children;
+  if (!cloudBackend && !isSupabaseConfigured) return children;
   if (checking) {
-    return (
-      <div className="auth-page auth-loading">
-        <div className="auth-wordmark">BOOK CLUB</div>
-        <p>Opening your shelf…</p>
-      </div>
-    );
+    return <BootScreen message="Opening your shelf…" fullViewport />;
   }
   if (session && mode !== 'reset-password') return children;
 
   async function createAccount(event: FormEvent) {
     event.preventDefault();
-    if (!supabase) return;
     setError('');
     if (!displayName.trim()) return setError('Add your name so your friends know who you are.');
     if (!email.trim()) return setError('Enter your email.');
-    if (password.length < 6) return setError('Use at least 6 characters for your password.');
+    if (password.length < 12) return setError('Use at least 12 characters for your password.');
 
     setLoading(true);
+    if (cloudBackend) {
+      try {
+        await authPost('/api/auth/sign-up/email', { name: displayName.trim(), email: email.trim(), password, callbackURL: window.location.origin });
+        const next = await cloudApi.session();
+        setLoading(false);
+        if (next.user) setSession({ user: next.user }); else setMode('check-email');
+      } catch (e) { setLoading(false); setError(e instanceof Error ? e.message : 'Could not create your account.'); }
+      return;
+    }
+    if (!supabase) { setLoading(false); return; }
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: email.trim(),
       password,
@@ -78,10 +100,18 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   async function signIn(event: FormEvent) {
     event.preventDefault();
-    if (!supabase) return;
     setError('');
     if (!email.trim() || !password) return setError('Enter your email and password.');
     setLoading(true);
+    if (cloudBackend) {
+      try {
+        const payload = await authPost('/api/auth/sign-in/email', { email: email.trim(), password });
+        setSession({ user: payload.user || (await cloudApi.session()).user! });
+      } catch (e) { setError(e instanceof Error ? e.message : 'Could not sign in.'); }
+      setLoading(false);
+      return;
+    }
+    if (!supabase) { setLoading(false); return; }
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
@@ -91,9 +121,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   async function continueWithGoogle() {
-    if (!supabase) return;
     setError('');
     setLoading(true);
+    if (cloudBackend) {
+      try { const payload = await authPost('/api/auth/sign-in/social', { provider: 'google', callbackURL: window.location.origin }); if (!payload.url) throw new Error('Could not start Google sign in.'); window.location.assign(payload.url); } catch (e) { setLoading(false); setError(e instanceof Error ? e.message : 'Could not start Google sign in.'); }
+      return;
+    }
+    if (!supabase) { setLoading(false); return; }
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}${window.location.pathname}` },
@@ -106,10 +140,16 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   async function sendResetLink(event: FormEvent) {
     event.preventDefault();
-    if (!supabase) return;
     setError(''); setMessage('');
     if (!email.trim()) return setError('Enter your email.');
     setLoading(true);
+    if (cloudBackend) {
+      try { await authPost('/api/auth/request-password-reset', { email: email.trim(), redirectTo: `${window.location.origin}${window.location.pathname}` }); setMessage('Check your inbox for the password reset link.'); }
+      catch (e) { setError(e instanceof Error ? e.message : 'Could not send a reset link.'); }
+      finally { setLoading(false); }
+      return;
+    }
+    if (!supabase) { setLoading(false); return; }
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
     setLoading(false);
     if (resetError) return setError(resetError.message);
@@ -118,10 +158,18 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   async function updateRecoveredPassword(event: FormEvent) {
     event.preventDefault();
-    if (!supabase) return;
     setError(''); setMessage('');
-    if (password.length < 6) return setError('Use at least 6 characters for your password.');
+    if (password.length < 12) return setError('Use at least 12 characters for your password.');
     setLoading(true);
+    if (cloudBackend) {
+      const token = new URLSearchParams(window.location.search).get('token');
+      if (!token) { setLoading(false); return setError('That password-reset link is invalid or has expired.'); }
+      try { await authPost('/api/auth/reset-password', { token, newPassword: password }); setPassword(''); setMessage('Password updated. Sign in with your new password.'); setMode('signin'); window.history.replaceState({}, '', window.location.pathname); }
+      catch (e) { setError(e instanceof Error ? e.message : 'Could not update your password.'); }
+      finally { setLoading(false); }
+      return;
+    }
+    if (!supabase) { setLoading(false); return; }
     const { error: updateError } = await supabase.auth.updateUser({ password });
     setLoading(false);
     if (updateError) return setError(updateError.message);
@@ -172,7 +220,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             <p className="auth-form-intro">Build your bookshelf + join or start a club next.</p>
 
             <label htmlFor="display-name">Your name</label>
-            <input id="display-name" autoComplete="name" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Neha" />
+            <input id="display-name" autoComplete="name" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Alex Morgan" />
 
             <label htmlFor="signup-email">Email</label>
             <input id="signup-email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />

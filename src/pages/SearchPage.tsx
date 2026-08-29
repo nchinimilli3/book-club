@@ -6,10 +6,10 @@ import { BookRail } from '../components/BookRail';
 import { BookAddMenu, type BookAddTarget } from '../components/BookAddMenu';
 import { FeedbackMessage, PageState } from '../components/PageState';
 import { SelectMenu } from '../components/SelectMenu';
-import { buildLocalDecisionGuide, getBookDecisionDetails, searchBooks, type BookDecisionDetails, type BookSearchResult } from '../lib/books';
+import { buildLocalDecisionGuide, displayBookGenres, getBookDecisionDetails, searchBooks, type BookDecisionDetails, type BookSearchResult } from '../lib/books';
 import { getBookDiscovery, getDecisionGuide, type BookDiscoveryResponse, type DecisionGuide } from '../lib/api';
 import { catalogToSearchResult, discoveryToCatalog, type CatalogBook } from '../lib/catalog';
-import { getPersonalLibrary, saveBookToClub, savePersonalBook } from '../lib/data';
+import { getPersonalLibrary, saveBookToClub, savePersonalBook } from '@book-club/data';
 import { useApp } from '../lib/AppContext';
 import { useRouter } from '../lib/router';
 
@@ -24,27 +24,6 @@ const shelfLabel=(shelf:string)=>shelf==='want_to_read'?'Want to read':shelf==='
 const sameBook=(a?:BookSearchResult,b?:{title?:string;isbn?:string})=>!!a&&!!b&&((a.isbn&&b.isbn&&a.isbn===b.isbn)||a.title.trim().toLowerCase()===b.title?.trim().toLowerCase());
 function topicTone(topic:string){let n=0;for(const c of topic)n=(n+c.charCodeAt(0))%5;return `topic-tone-${n+1}`}
 function usefulGuideText(value?:string){const text=(value||'').trim();if(!text)return undefined;return /this reads as a book|catalog metadata|catalog .*subject data|predict discussion themes|thematic range|enough .*support a conversation/i.test(text)?undefined:text}
-function cleanSubject(value:string){return value.replace(/--.*$/,'').replace(/ fiction$/i,'').replace(/^genre\s*:\s*/i,'').replace(/^categor(?:y|ies)\s*:\s*/i,'').trim()}
-function displayGenres(subjects:string[]=[]){
-  const source=subjects.map(cleanSubject).filter(Boolean);
-  const text=source.join(' · ');
-  const candidates:[RegExp,string][]=[
-    [/fantasy|magic|wizard|witch|supernatural|ghost|monster|vampire/i,'Fantasy'],
-    [/mystery|detective|crime/i,'Mystery'],
-    [/thriller|suspense/i,'Thriller'],
-    [/romance|love stor/i,'Romance'],
-    [/science fiction|sci fi|dystop/i,'Science fiction'],
-    [/historical/i,'Historical fiction'],
-    [/memoir|autobiograph/i,'Memoir'],
-    [/biograph/i,'Biography'],
-    [/young adult|juvenile|children|childrens/i,"Children's / YA"],
-    [/poetry|poems/i,'Poetry'],
-    [/essay/i,'Essays'],
-    [/horror/i,'Horror'],
-  ];
-  const inferred=candidates.filter(([pattern])=>pattern.test(text)).map(([,label])=>label);
-  return [...new Set(inferred)].slice(0,2);
-}
 
 export function SearchPage(){
   const a=useApp(),{navigate:nav}=useRouter();
@@ -100,7 +79,7 @@ export function SearchPage(){
     let cancelled=false;
     getPersonalLibrary(a.user.id).then(items=>{
       if(cancelled)return;
-      const saved=items.find(item=>sameBook(detail,item.book));
+      const saved=items.find((item: any)=>sameBook(detail,item.book));
       setPersonalSaved(!!saved);
       if(saved){setPersonalShelf(saved.shelf);setFavorite(saved.isFavorite)}
     }).catch(()=>undefined);
@@ -113,11 +92,12 @@ export function SearchPage(){
   },[detail?.key,a.workspace?.ideaBooks,a.workspace?.currentBook?.id]);
 
   const local=useMemo(()=>details?buildLocalDecisionGuide(details):null,[details]);
+  const clubPickLimitReached=(a.workspace?.ideaBooks.filter(item=>item.status==='idea'&&item.suggestedBy?.id===a.user?.id).length||0)>=3;
   function openDetail(book:BookSearchResult){setQuickAdd(null);sessionStorage.setItem(SCROLL_KEY,String(scrollY));sessionStorage.setItem(OPEN_BOOK_KEY,JSON.stringify(book));history.pushState({bookPreview:true},'',location.href);pushedRef.current=true;setDetail(book)}
   function exitSearch(){const target=returnTarget;sessionStorage.removeItem(OPEN_BOOK_KEY);sessionStorage.removeItem(PROFILE_TARGET_KEY);sessionStorage.removeItem(SEARCH_RETURN_KEY);nav(target?.path||(a.activeClubId?`/clubs/${a.activeClubId}`:'/clubs'),true);if(typeof target?.scrollY==='number')requestAnimationFrame(()=>requestAnimationFrame(()=>scrollTo({top:target.scrollY,behavior:'instant' as ScrollBehavior})))}
   function closeDetail(){sessionStorage.removeItem(OPEN_BOOK_KEY);if(pushedRef.current)history.back();else if(returnTarget?.path)exitSearch();else{setDetail(null);requestAnimationFrame(()=>scrollTo(0,Number(sessionStorage.getItem(SCROLL_KEY)||0)))}}
 
-  async function suggestToClub(){if(!detail||!a.activeClubId)return;setBusy('club');setNotice('');try{const result=await saveBookToClub(a.activeClubId,{...detail,description:details?.description});setClubSaved(true);setNotice(result.alreadySaved?`Already on ${a.workspace?.club.name||'this club'}’s table.`:`Suggested to ${a.workspace?.club.name||'your club'}.`);void a.refresh()}catch(err:any){setNotice(err?.message||'Could not suggest this book.')}finally{setBusy(null)}}
+  async function suggestToClub(){if(!detail||!a.activeClubId)return;setBusy('club');setNotice('');try{const result=await saveBookToClub(a.activeClubId,{...detail,description:details?.description,subjects:details?.subjects||detail.subjects});setClubSaved(true);setNotice(result.alreadySaved?`Already on ${a.workspace?.club.name||'this club'}’s table.`:`Suggested to ${a.workspace?.club.name||'your club'}.`);void a.refresh()}catch(err:any){setNotice(err?.message||'Could not suggest this book.')}finally{setBusy(null)}}
   async function saveForMe(){if(!detail||!a.user)return;setBusy('personal');setNotice('');try{await savePersonalBook(a.user.id,{...detail,description:details?.description},{shelf:personalShelf,isFavorite:favorite});setPersonalSaved(true);setNotice(`Saved to ${shelfLabel(personalShelf)}${favorite?' and Favorites':''}.`);if(profileReturn)exitSearch()}catch(err:any){setNotice(err?.message||'Could not save this book.')}finally{setBusy(null)}}
   async function quickSave(book:BookSearchResult,target:'club'|'want_to_read'|'currently_reading'|'read'){
     setBusy('quick');setNotice('');
@@ -148,13 +128,13 @@ export function SearchPage(){
   if(detail)return <div className="page book-preview">
     <div className="book-preview-nav"><button type="button" className="preview-exit" onClick={closeDetail} aria-label="Close book preview"><X/></button></div>
     <section className="book-choice-layout">
-      <aside className="preview-cover-column"><BookCover className="preview-cover" title={detail.title} author={detail.author} src={detail.cover}/><div className="preview-metadata book-facts"><div><small>Published</small><b>{detail.year||'Varies'}</b></div>{details?.pages&&<div><small>Length</small><b>{details.pages} pages</b></div>}{displayGenres(details?.subjects).map(genre=><div key={genre}><small>Genre</small><b>{genre}</b></div>)}</div></aside>
+      <aside className="preview-cover-column"><BookCover className="preview-cover" title={detail.title} author={detail.author} src={detail.cover}/><div className="preview-metadata book-facts"><div><small>Published</small><b>{detail.year||'Varies'}</b></div>{details?.pages&&<div><small>Length</small><b>{details.pages} pages</b></div>}{displayBookGenres(details?.subjects).map(genre=><div key={genre}><small>Genre</small><b>{genre}</b></div>)}</div></aside>
       <div className="preview-copy">
         <div className="preview-heading"><h1>{detail.title}</h1><p className="author">{detail.author}</p></div>
         <section className="decision-guide"><header><h2>Would this work for your club?</h2></header>{guideLoading&&!local?<div className="decision-loading">Checking this book…</div>:<>{usefulGuideText(guide?.whatItsAbout)&&<article className="decision-about"><h3>What it’s about</h3><p>{usefulGuideText(guide?.whatItsAbout)}</p></article>}{local&&<div className="decision-grid"><article className="decision-time"><h3>Time commitment</h3><p>{local.commitment}</p></article><article className="decision-fit"><h3>Why it could work</h3><p>{usefulGuideText(guide?.whyItWorks)||local.fit}</p></article>{(usefulGuideText(guide?.conversation?.join(' · '))||local.discussion)&&<article className="decision-talk"><h3>Likely discussion</h3><p>{usefulGuideText(guide?.conversation?.join(' · '))||local.discussion}</p></article>}{usefulGuideText(guide?.headsUp)&&<article className="decision-headsup"><h3>Worth knowing</h3><p>{usefulGuideText(guide?.headsUp)}</p></article>}</div>}<div className="decision-topics">{(guide?.vibe||local?.topics||[]).slice(0,5).map(x=><span className={topicTone(x)} key={x}>{x}</span>)}</div></>}</section>
         <div className="relationship-actions preview-save-actions">
           <section className="preview-personal-save"><label className="preview-shelf-field"><span>Save to</span><SelectMenu className="preview-shelf-menu" ariaLabel="Personal shelf" value={personalShelf} options={[{value:'want_to_read',label:'Want to read'},{value:'currently_reading',label:'Currently reading'},{value:'read',label:'Books read'}]} onChange={value=>{setPersonalShelf(value);setPersonalSaved(false)}}/></label><div className="preview-save-row"><button type="button" className={`favorite-toggle ${favorite?'selected':''}`} onClick={()=>setFavorite(v=>!v)} aria-pressed={favorite}><Heart fill={favorite?'currentColor':'none'}/> {favorite?'Favorite':'Mark favorite'}</button><button type="button" className="primary preview-personal-save-button" onClick={saveForMe} disabled={!a.user||busy!==null}>{busy==='personal'?'Saving…':personalSaved?`Saved to ${shelfLabel(personalShelf)}`:`Save to ${shelfLabel(personalShelf)}`}</button></div></section>
-          <section className="preview-club-save"><button type="button" className="primary" onClick={suggestToClub} disabled={!a.activeClubId||busy!==null}>{busy==='club'?'Adding…':clubSaved?`In ${a.workspace?.club.name||'club'} shortlist`:`Add to ${a.workspace?.club.name||'club'} shortlist`}</button></section>
+          <section className="preview-club-save"><button type="button" className="primary" onClick={suggestToClub} disabled={!a.activeClubId||busy!==null||(clubPickLimitReached&&!clubSaved)}>{busy==='club'?'Adding…':clubSaved?`In ${a.workspace?.club.name||'club'} shortlist`:clubPickLimitReached?'Your 3 club picks are used':`Add to ${a.workspace?.club.name||'club'} shortlist`}</button></section>
         </div>
         {notice&&<FeedbackMessage>{notice}</FeedbackMessage>}
       </div>
@@ -163,8 +143,8 @@ export function SearchPage(){
 
   return <div className="page search-page"><header className="page-title search-title"><h1>Find a book</h1>{returnTarget&&<button type="button" className="search-exit" onClick={exitSearch} aria-label={`Close search and return to ${returnTarget.label||'previous page'}`}><X/></button>}</header><div className="search-field"><Search/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Title, author, ISBN" autoFocus/>{q&&<button type="button" onClick={()=>setQ('')} aria-label="Clear search"><X/></button>}</div>{notice&&<FeedbackMessage className="search-notice">{notice}</FeedbackMessage>}
     {!q.trim()?<div className="search-discovery">
-      <BookRail title="NYT Best Sellers" books={nytBooks} loading={discoveryLoading} meta={b=>b.rank?`#${b.rank} · ${b.listName||'Best Sellers'}`:(b.listName||'Best Sellers')} onOpen={openCatalogBook} onAdd={addCatalogBook} renderOverlay={book=>quickAdd?.key===book.key?<BookAddMenu title={book.title} clubName={a.workspace?.club.name} showClub={!!a.activeClubId} busy={busy==='quick'} savedTargets={savedTargetsFor(catalogToSearchResult(book))} onClose={()=>setQuickAdd(null)} onChoose={target=>chooseQuickTarget(catalogToSearchResult(book),target)}/>:null} emptyMessage={!discovery.apiReachable?'The deployed site cannot reach the Book Club API.':!discovery.nytConfigured?'NYT is not configured on the API Worker.':discovery.nytStatus==='error'?'NYT is connected, but its request was rejected.':'Best Sellers are unavailable right now.'}/>
+      <BookRail title="NYT Best Sellers" books={nytBooks} loading={discoveryLoading} meta={b=>b.rank?`#${b.rank} · ${b.listName||'Best Sellers'}`:(b.listName||'Best Sellers')} onOpen={openCatalogBook} onAdd={addCatalogBook} renderOverlay={book=>quickAdd?.key===book.key?<BookAddMenu title={book.title} clubName={a.workspace?.club.name} showClub={!!a.activeClubId} busy={busy==='quick'} clubLimitReached={clubPickLimitReached} savedTargets={savedTargetsFor(catalogToSearchResult(book))} onClose={()=>setQuickAdd(null)} onChoose={target=>chooseQuickTarget(catalogToSearchResult(book),target)}/>:null} emptyMessage={!discovery.apiReachable?'The deployed site cannot reach the Book Club API.':!discovery.nytConfigured?'NYT is not configured on the API Worker.':discovery.nytStatus==='error'?'NYT is connected, but its request was rejected.':'Best Sellers are unavailable right now.'}/>
       {!discovery.apiReachable?<p className="discovery-config-note discovery-config-error">API connection failed: {discovery.nytError||'the Pages app could not reach book-club-api.'}</p>:discovery.nytStatus==='error'?<p className="discovery-config-note discovery-config-error">NYT Worker check failed: {discovery.nytError||'provider request failed.'}</p>:!discovery.nytConfigured?<p className="discovery-config-note">Add NYT_BOOKS_API_KEY to the book-club-api Worker and redeploy that Worker.</p>:null}
-    </div>:loading?<BookSkeleton count={8}/>:q.trim().length>=2&&!results.length?<PageState title="No match yet." body="Try the title and author." compact/>:<div className="book-wall">{results.map(b=><article className="search-book-card" key={b.key}><button type="button" className="search-book-open" onClick={()=>openDetail(b)} aria-label={`Open ${b.title}`}><BookCover className="book-image" title={b.title} author={b.author} src={b.cover}/><b>{b.title}</b><small>{b.author}</small></button><button type="button" className="search-quick-add" aria-expanded={quickAdd?.key===b.key} aria-label={`Add ${b.title}`} onClick={()=>setQuickAdd(x=>x?.key===b.key?null:b)}><Plus/> Add</button>{quickAdd?.key===b.key&&<BookAddMenu title={b.title} clubName={a.workspace?.club.name} showClub={!!a.activeClubId} busy={busy==='quick'} savedTargets={savedTargetsFor(b)} onClose={()=>setQuickAdd(null)} onChoose={target=>chooseQuickTarget(b,target)}/>}</article>)}</div>}
+    </div>:loading?<BookSkeleton count={8}/>:q.trim().length>=2&&!results.length?<PageState title="No match yet." body="Try the title and author." compact/>:<div className="book-wall">{results.map(b=><article className="search-book-card" key={b.key}><button type="button" className="search-book-open" onClick={()=>openDetail(b)} aria-label={`Open ${b.title}`}><BookCover className="book-image" title={b.title} author={b.author} src={b.cover}/><b>{b.title}</b><small>{b.author}</small></button><button type="button" className="search-quick-add" aria-expanded={quickAdd?.key===b.key} aria-label={`Add ${b.title}`} onClick={()=>setQuickAdd(x=>x?.key===b.key?null:b)}><Plus/> Add</button>{quickAdd?.key===b.key&&<BookAddMenu title={b.title} clubName={a.workspace?.club.name} showClub={!!a.activeClubId} busy={busy==='quick'} clubLimitReached={clubPickLimitReached} savedTargets={savedTargetsFor(b)} onClose={()=>setQuickAdd(null)} onChoose={target=>chooseQuickTarget(b,target)}/>}</article>)}</div>}
   </div>
 }

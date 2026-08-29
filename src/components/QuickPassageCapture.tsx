@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Camera, Check, ImagePlus, LoaderCircle, LockKeyhole, MessageCircle, Plus, RotateCcw, X } from 'lucide-react';
 import { useApp } from '../lib/AppContext';
-import { createThought, savePrivateNote, saveQuote } from '../lib/data';
+import { createThought, savePrivateNote, saveQuote } from '@book-club/data';
 import { transcribePassage, type PassageTranscription } from '../lib/api';
 
 const MAX_EDGE=1800;

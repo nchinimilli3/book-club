@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowRight, Users } from 'lucide-react';
 import { BookCover } from '../components/BookCover';
 import { useApp } from '../lib/AppContext';
-import { joinClub, previewClubInvite } from '../lib/data';
+import { joinClub, previewClubInvite } from '@book-club/data';
 import { useRouter } from '../lib/router';
 import { FeedbackMessage } from '../components/PageState';
 

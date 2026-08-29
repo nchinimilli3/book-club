@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Star } from 'lucide-react';
 import { useApp } from '../lib/AppContext';
 import { useRouter } from '../lib/router';
-import { getClubArchive } from '../lib/data';
+import { getClubArchive } from '@book-club/data';
 import { BookCover } from '../components/BookCover';
 
 type ArchiveRating={rating:number;review?:string;recommend?:boolean;submittedAt?:string;displayName:string};

@@ -16,6 +16,19 @@ export type BookDecisionDetails = BookSearchResult & {
   subjects:string[];
 };
 
+export function displayBookGenres(subjects:string[]=[]){
+  const text=subjects.join(' · ');
+  const candidates:[RegExp,string][]=[
+    [/fantasy|magic|wizard|witch|supernatural|ghost|monster|vampire/i,'Fantasy'],
+    [/mystery|detective|crime/i,'Mystery'],[/thriller|suspense/i,'Thriller'],
+    [/romance|love stor/i,'Romance'],[/science fiction|sci fi|dystop/i,'Science fiction'],
+    [/historical/i,'Historical fiction'],[/memoir|autobiograph/i,'Memoir'],
+    [/biograph/i,'Biography'],[/young adult|juvenile|children|childrens/i,"Children's / YA"],
+    [/poetry|poems/i,'Poetry'],[/essay/i,'Essays'],[/horror/i,'Horror'],
+  ];
+  return [...new Set(candidates.filter(([pattern])=>pattern.test(text)).map(([,label])=>label))].slice(0,2);
+}
+
 const cleanSubjectValue=(value:any)=>{
   let subject=String(value||'').replace(/[_-]+/g,' ').trim();
   if(!subject)return '';

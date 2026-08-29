@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { ArrowLeft, ArrowRight, Heart, LockKeyhole, MessageCircleQuestion, Sparkles, Star, Users } from 'lucide-react';
 import { BookCover } from '../components/BookCover';
-import { revealPrediction, setCheckpointCheckin } from '../lib/data';
+import { revealPrediction, setCheckpointCheckin } from '@book-club/data';
 import { getMeetingGuide, type MeetingGuide } from '../lib/api';
 import { formatMeetingDateTime } from '../lib/dateTime';
 import { useApp } from '../lib/AppContext';

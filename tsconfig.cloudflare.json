@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "paths": {
+      "@book-club/supabase": ["src/lib/supabase.cloud.ts"],
+      "@book-club/data": ["src/lib/data.cloud.ts"]
+    }
+  }
+}

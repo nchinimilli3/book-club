@@ -1,29 +1,24 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Bell, BookOpen, ChevronDown, Search } from 'lucide-react';
 import { AppProvider, useApp } from './lib/AppContext';
 import { RouterProvider, match, useRouter } from './lib/router';
-import { ClubsPage } from './pages/ClubsPage';
 import { HomePage } from './pages/HomePage';
-import { ReadingRoom } from './pages/ReadingRoom';
-import { SearchPage } from './pages/SearchPage';
-import { ProfilePage } from './pages/ProfilePage';
-import { SettingsPage } from './pages/SettingsPage';
-import { JoinInvitePage } from './pages/JoinInvitePage';
-import { NotificationsPage } from './pages/NotificationsPage';
-import { ArchivePage } from './pages/ArchivePage';
-import { MeetingModePage } from './pages/MeetingModePage';
-import { MemberProfilePage } from './pages/MemberProfilePage';
-import { ClubSettingsPage } from './pages/ClubSettingsPage';
-import { markAllNotificationsRead } from './lib/data';
-import { QuickPassageCapture } from './components/QuickPassageCapture';
+import { markAllNotificationsRead } from '@book-club/data';
+import { BootScreen } from './components/BootScreen';
+import { cloudApi } from './lib/cloudApi';
 
-function BootScreen({message,fullViewport=false}:{message:string;fullViewport?:boolean}){
-  return <div className={`boot boot-loading${fullViewport?' boot-full':''}`} role="status" aria-live="polite">
-    <div className="boot-bookshelf" aria-hidden="true"><i/><i/><i/><span/></div>
-    <b>BOOK CLUB</b><p>Finding your next chapter</p><span>{message}</span>
-    <div className="boot-progress" aria-hidden="true"><i/><i/><i/></div>
-  </div>;
-}
+const ClubsPage = lazy(() => import('./pages/ClubsPage').then(module => ({ default: module.ClubsPage })));
+const ReadingRoom = lazy(() => import('./pages/ReadingRoom').then(module => ({ default: module.ReadingRoom })));
+const SearchPage = lazy(() => import('./pages/SearchPage').then(module => ({ default: module.SearchPage })));
+const ProfilePage = lazy(() => import('./pages/ProfilePage').then(module => ({ default: module.ProfilePage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then(module => ({ default: module.SettingsPage })));
+const JoinInvitePage = lazy(() => import('./pages/JoinInvitePage').then(module => ({ default: module.JoinInvitePage })));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage').then(module => ({ default: module.NotificationsPage })));
+const ArchivePage = lazy(() => import('./pages/ArchivePage').then(module => ({ default: module.ArchivePage })));
+const MeetingModePage = lazy(() => import('./pages/MeetingModePage').then(module => ({ default: module.MeetingModePage })));
+const MemberProfilePage = lazy(() => import('./pages/MemberProfilePage').then(module => ({ default: module.MemberProfilePage })));
+const ClubSettingsPage = lazy(() => import('./pages/ClubSettingsPage').then(module => ({ default: module.ClubSettingsPage })));
+const QuickPassageCapture = lazy(() => import('./components/QuickPassageCapture').then(module => ({ default: module.QuickPassageCapture })));
 
 function RootRedirect(){
   const a=useApp(),{navigate}=useRouter();
@@ -88,7 +83,7 @@ function Shell(){
   async function clearNotifications(){
     if(!a.user||!a.unreadNotifications)return;
     setClearingNotifications(true);
-    try{await markAllNotificationsRead(a.user.id);await a.refresh();setNotificationMenuOpen(false)}finally{setClearingNotifications(false)}
+    try{if(import.meta.env.VITE_BACKEND==='d1')await cloudApi.markAllNotificationsRead();else await markAllNotificationsRead(a.user.id);await a.refresh();setNotificationMenuOpen(false)}finally{setClearingNotifications(false)}
   }
   return <div className="app">
     <header className="global-header">
@@ -116,8 +111,8 @@ function Shell(){
       </div>
     </header>
     {a.offline&&<div className="offline-banner">Offline · showing your last saved club.</div>}
-    <main>{page}</main>
-    <QuickPassageCapture/>
+    <main><Suspense fallback={<BootScreen message="Opening…"/>}>{page}</Suspense></main>
+    <Suspense fallback={null}><QuickPassageCapture/></Suspense>
     <nav className="mobile-nav" aria-label="Primary">
       <button onClick={()=>navigate(currentPath)}><BookOpen/><span>Club</span></button>
       <button onClick={()=>navigate('/search')}><Search/><span>Find</span></button>
@@ -126,4 +121,9 @@ function Shell(){
   </div>;
 }
 
-export default function App(){return <RouterProvider><AppProvider><Shell/></AppProvider></RouterProvider>}
+function MaintenanceScreen(){return <div className="boot"><b>BOOK CLUB is briefly offline.</b><span>We’re reducing background traffic and will be back shortly.</span></div>}
+
+export default function App(){
+  if(import.meta.env.VITE_MAINTENANCE_MODE==='true')return <MaintenanceScreen/>;
+  return <RouterProvider><AppProvider><Shell/></AppProvider></RouterProvider>
+}

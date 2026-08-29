@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.dev.vars
+worker/d1/.dev.vars
+.env.*.local
+.env.local
+.wrangler/
+worker/d1/.wrangler/

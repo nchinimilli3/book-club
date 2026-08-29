@@ -11,6 +11,8 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": { "@book-club/supabase": ["src/lib/supabase.ts"], "@book-club/data": ["src/lib/data.ts"] },
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noUnusedLocals": true,

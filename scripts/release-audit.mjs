@@ -14,7 +14,8 @@ for(const f of files.filter(x=>x.endsWith('.tsx'))){
     if(tag==='button'){
       const attrs=opening.attributes.properties.filter(ts.isJsxAttribute);const names=new Set(attrs.map(a=>a.name.getText(sf)));
       const hasAction=names.has('onClick')||names.has('onPointerDown')||names.has('onMouseDown')||attrs.some(a=>a.name.getText(sf)==='type'&&a.initializer?.getText(sf).includes('submit'));
-      if(!hasAction){const pos=sf.getLineAndCharacterOfPosition(opening.pos);failures.push(`button without action: ${path.relative(root,f)}:${pos.line+1}`)}
+      // A disabled status button communicates progress and intentionally has no action.
+      if(!hasAction&&!names.has('disabled')){const pos=sf.getLineAndCharacterOfPosition(opening.pos);failures.push(`button without action: ${path.relative(root,f)}:${pos.line+1}`)}
     }
   }
   if(ts.isCallExpression(n)&&ts.isIdentifier(n.expression)&&['nav','navigate'].includes(n.expression.text)&&n.arguments.length){
@@ -23,7 +24,7 @@ for(const f of files.filter(x=>x.endsWith('.tsx'))){
   ts.forEachChild(n,visit)
  }visit(sf)
 }
-const data=fs.readFileSync(path.join(src,'lib/data.ts'),'utf8');const migrationFiles=['009_FINAL_RELEASE.sql','012_launch_remaining_five.sql'];const sql=migrationFiles.map(name=>fs.readFileSync(path.join(root,'supabase/migrations',name),'utf8')).join('\n');
+const data=fs.readFileSync(path.join(src,'lib/data.ts'),'utf8');const migrationFiles=fs.readdirSync(path.join(root,'supabase/migrations')).filter(name=>name.endsWith('.sql')).sort();const sql=migrationFiles.map(name=>fs.readFileSync(path.join(root,'supabase/migrations',name),'utf8')).join('\n');
 const rpcs=[...data.matchAll(/\.rpc\('([^']+)'/g)].map(m=>m[1]);for(const rpc of new Set(rpcs)){if(!new RegExp(`function\\s+public\\.${rpc.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\s*\\(`,'i').test(sql))failures.push(`RPC used by frontend missing from release migrations: ${rpc}`)}
 const stickerFile=fs.readFileSync(path.join(src,'lib/stickers.tsx'),'utf8');for(const m of stickerFile.matchAll(/src:\s*['"]([^'"]+)['"]/g)){if(!m[1].startsWith('/'))continue;const p=path.join(root,'public',m[1].replace(/^\//,''));if(!fs.existsSync(p))failures.push(`missing sticker asset: ${m[1]}`)}
 for(const name of migrationFiles){const migration=fs.readFileSync(path.join(root,'supabase/migrations',name),'utf8');const dollars=(migration.match(/\$\$/g)||[]).length;if(dollars%2)failures.push(`${name} has unbalanced $$ delimiters`)}

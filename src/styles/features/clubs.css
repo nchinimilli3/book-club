@@ -33,3 +33,4 @@
 }@media(max-width:720px){
   .header-club-switcher{min-height:44px;padding:0 12px;max-width:calc(100vw - 88px);font-size:14px}
 }
+.clubs-page-title{align-items:center}.clubs-create-button{min-height:48px;white-space:nowrap;padding-inline:17px}.clubs-create-button svg{flex:0 0 auto}@media(max-width:560px){.clubs-page .clubs-page-title{display:flex;margin:16px 0 42px;gap:12px;align-items:center}.clubs-page-title h1{font-size:clamp(42px,12vw,52px);white-space:nowrap;letter-spacing:-.06em}.clubs-create-button{min-width:0;min-height:48px;padding-inline:14px;font-size:15px;gap:8px}.clubs-create-button svg{width:17px;height:17px}}

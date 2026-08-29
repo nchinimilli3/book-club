@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getBookContext, getMargins } from '../../lib/data';
+import { getBookContext, getMargins } from '@book-club/data';
 import { getReaderContext } from '../../lib/api';
 import { getKnownChapterCount } from '../../lib/books';
 import type { Book, MarginItem } from '../../lib/model';

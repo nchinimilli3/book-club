@@ -1,0 +1,7 @@
+# Copy to .dev.vars for local development. This file is intentionally ignored.
+BETTER_AUTH_SECRET=generate-a-random-32-byte-secret
+GOOGLE_CLIENT_ID=your-google-oauth-client-id
+GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
+RESEND_API_KEY=re_local_development_key
+TURNSTILE_SECRET_KEY=your-turnstile-secret
+AUTH_EMAIL_MODE=console

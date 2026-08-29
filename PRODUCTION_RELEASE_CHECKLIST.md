@@ -1,13 +1,20 @@
-# BOOK CLUB production release checklist
+# BOOK CLUB Cloudflare production release checklist
+
+## Egress guardrail
+
+- Keep the Cloudflare maintenance switch enabled until preview acceptance is complete; do not expose the public route while a release check is failing.
+- Review Cloudflare Workers, D1, and R2 usage before promotion. Keep the application-level R2 cap at 500 MB and investigate traffic well before any provider allowance is exhausted.
+- Do not use Supabase as a runtime fallback in Cloudflare mode. The D1 build must use explicit `VITE_BACKEND=d1` and `VITE_API_BASE_URL` values.
+- Confirm refresh-on-return behavior: no idle-tab polling, one scoped reconciliation on tab focus, and no full workspace reload for a small mutation.
 
 A failed item is a blocker. Do not add a frontend fallback to hide a backend/privacy failure.
 
-## 1. Database + privacy
+## 1. Preview environment, database + privacy
 
-- Run `supabase/migrations/009_FINAL_RELEASE.sql` once against the existing Supabase project.
-- Require every `book_club_release_check()` row to be `PASS`.
-- Confirm production + localhost auth redirect URLs.
-- Confirm RLS is enabled on all private club/social tables.
+- Apply D1 migrations `0001` through `0007` to the preview database and confirm foreign keys, indexes, and empty-state queries.
+- Confirm preview and localhost auth redirect URLs, including the Google OAuth callback.
+- Confirm authorization is enforced by the Worker for every private club/social read and mutation.
+- Keep the existing Supabase production route unchanged until all preview checks pass.
 - Run a 3-account isolation test: Alice + Bob in Club A, Bob + Carol in Club B. Alice must never see Club B; Carol must never see Club A through UI, guessed routes, REST, RPC, or realtime.
 - Verify club invite reset/disable invalidates the old link.
 - Verify a member can leave, an owner must transfer ownership first, and removing a member preserves historical posts/ratings.
@@ -70,11 +77,10 @@ Verify 44px-ish touch targets on consequential controls, visible keyboard focus,
 
 Frontend vars:
 
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+- `VITE_BACKEND=d1`
 - `VITE_API_BASE_URL`
 
-Worker vars/secrets are documented in `worker/.dev.vars.example` and `worker/wrangler.toml`. The service-role key and provider secrets must never be exposed to the frontend.
+Worker vars/secrets are documented in `worker/d1/wrangler.toml` and `worker/d1/.dev.vars.example`. The service-role key and provider secrets must never be exposed to the frontend. Configure preview first; do not invent production resource IDs or deploy without explicit account authorization.
 
 Verify:
 
@@ -91,4 +97,4 @@ npm run test:release
 npm run build
 ```
 
-Only deploy after both commands pass and the live privacy/lifecycle checks above are complete.
+Also run the Worker type check and Wrangler dry-run under Node 22. Only deploy preview after these commands and the live privacy/lifecycle checks above are complete. Promote production only after preview has remained healthy under normal use and rollback is ready.

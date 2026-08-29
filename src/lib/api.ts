@@ -1,14 +1,17 @@
 import type { BookDecisionDetails } from './books';
-import { supabase } from './supabase';
+import { supabase } from '@book-club/supabase';
+import { cloudApi } from './cloudApi';
 const DEV_API = String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/,'');
 const API = import.meta.env.DEV ? DEV_API : ''; // Production uses the same-origin Pages Function service binding.
+const cloudBackend = import.meta.env.VITE_BACKEND === 'd1';
 
 async function authHeaders(extra:Record<string,string>={}){
+  if(cloudBackend)return extra;
   const token=(await supabase?.auth.getSession())?.data.session?.access_token;
   return {...extra,...(token?{authorization:`Bearer ${token}`}:{})};
 }
 async function apiJson(path:string,init:RequestInit={}){
-  const r=await fetch(`${API}${path}`,{...init,headers:await authHeaders(init.headers as Record<string,string>||{})});
+  const r=await fetch(`${API}${path}`,{...init,credentials:cloudBackend?'include':init.credentials,headers:await authHeaders(init.headers as Record<string,string>||{})});
   const contentType=r.headers.get('content-type')||'';
   const body=contentType.includes('application/json')?await r.json().catch(()=>({})):{};
   if(!r.ok)throw new Error(body?.error||`Request failed (${r.status})`);
@@ -17,12 +20,12 @@ async function apiJson(path:string,init:RequestInit={}){
 }
 
 export async function enrichBook(title:string, author:string) {
-  try{return await apiJson(`/api/enrich?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`)}catch{return null}
+  try{return cloudBackend?await cloudApi.enrichBook(title,author):await apiJson(`/api/enrich?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`)}catch{return null}
 }
 
 export async function resolveBookCover(input:{title:string;author:string;isbn?:string;currentCover?:string}){
   try{
-    const j=await apiJson('/api/book-cover/resolve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});
+    const j=cloudBackend?await cloudApi.resolveBookCover(input):await apiJson('/api/book-cover/resolve',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});
     return typeof j?.url==='string'&&j.url?{url:j.url,source:String(j?.source||'')} : null;
   }catch{return null}
 }
@@ -37,10 +40,10 @@ export type DecisionGuide = {
 };
 
 export async function getDecisionGuide(book:BookDecisionDetails):Promise<DecisionGuide|null>{
-  try{return await apiJson('/api/book-decision',{
+  try{return (cloudBackend?await cloudApi.bookDecision({title:book.title,author:book.author,year:book.year,pages:book.pages,description:book.description?.slice(0,5000),subjects:book.subjects.slice(0,20)}):await apiJson('/api/book-decision',{
       method:'POST',headers:{'content-type':'application/json'},
       body:JSON.stringify({title:book.title,author:book.author,year:book.year,pages:book.pages,description:book.description?.slice(0,5000),subjects:book.subjects.slice(0,20)})
-    })}catch{return null}
+    })) as DecisionGuide}catch{return null}
 }
 
 export type ReaderContextItem = {
@@ -55,7 +58,7 @@ export type ReaderContextItem = {
 };
 
 export async function getReaderContext(input:{bookId?:string;title:string;author:string;year?:number;chapter?:number}):Promise<ReaderContextItem[]>{
-  const j=await apiJson('/api/reader-context',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});
+  const j=cloudBackend?await cloudApi.readerContext(input):await apiJson('/api/reader-context',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});
   return Array.isArray(j?.items)?j.items:[];
 }
 
@@ -76,7 +79,7 @@ export async function getMeetingGuide(input:{
   sharedPosts?:Array<{type:string;body:string;chapter?:number;author?:string;reactions?:number}>;
 }):Promise<MeetingGuide|null>{
   try{
-    const j=await apiJson('/api/meeting-guide',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});
+    const j=cloudBackend?await cloudApi.meetingGuide(input):await apiJson('/api/meeting-guide',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});
     return{
       themes:Array.isArray(j?.themes)?j.themes.map(String).filter(Boolean).slice(0,4):[],
       characters:Array.isArray(j?.characters)?j.characters.map(String).filter(Boolean).slice(0,4):[],
@@ -88,27 +91,38 @@ export async function getMeetingGuide(input:{
   }catch{return null}
 }
 
-export type ClubRecommendation={title:string;author:string;reason:string;cover?:string;year?:number;pages?:number;isbn?:string;description?:string;confidence?:string};
-export async function getClubRecommendations(clubId:string):Promise<ClubRecommendation[]>{
-  try{
-    const j=await apiJson('/api/recommendations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({clubId})});
-    return Array.isArray(j?.suggestions)?j.suggestions:[];
-  }catch{return[]}
-}
-
 export type CalendarStatus={configured:boolean;connected:boolean;email?:string;lastSyncedAt?:string;planSynced?:boolean};
 export async function getCalendarStatus(clubBookId?:string):Promise<CalendarStatus>{
-  try{return await apiJson(`/api/calendar/status${clubBookId?`?clubBookId=${encodeURIComponent(clubBookId)}`:''}`)}catch{return{configured:true,connected:false}}
+  try{return cloudBackend?await cloudApi.calendarStatus() as CalendarStatus:await apiJson(`/api/calendar/status${clubBookId?`?clubBookId=${encodeURIComponent(clubBookId)}`:''}`)}catch{return{configured:false,connected:false}}
 }
 export async function beginCalendarConnect(){
-  const j=await apiJson('/api/calendar/start',{method:'POST'});if(!j?.url)throw new Error('Could not start Google Calendar connection.');window.location.assign(j.url);
+  const j=cloudBackend?await cloudApi.startCalendar():await apiJson('/api/calendar/start',{method:'POST'});if(!j?.url)throw new Error('Could not start Google Calendar connection.');window.location.assign(j.url);
 }
-export async function disconnectCalendar(){return apiJson('/api/calendar/disconnect',{method:'POST'})}
-export async function syncMeetingToCalendar(meetingId:string){return apiJson('/api/calendar/sync',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({meetingId})})}
-export async function removeMeetingFromCalendar(meetingId:string){return apiJson('/api/calendar/remove-event',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({meetingId})})}
-export async function syncReadingPlanToCalendar(clubBookId:string){return apiJson('/api/calendar/sync-reading-plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({clubBookId})})}
-export async function removeReadingPlanFromCalendar(clubBookId:string){return apiJson('/api/calendar/remove-reading-plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({clubBookId})})}
-export async function getApiHealth(){try{return{...(await apiJson('/api/health')),configured:true}}catch{return{ok:false,configured:Boolean(API||!import.meta.env.DEV)}}}
+export async function disconnectCalendar(){return cloudBackend?cloudApi.disconnectCalendar():apiJson('/api/calendar/disconnect',{method:'POST'})}
+export async function syncMeetingToCalendar(meetingId:string){
+  if(cloudBackend)return cloudApi.syncMeetingCalendarById(meetingId);
+  return apiJson('/api/calendar/sync',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({meetingId})});
+}
+export async function removeMeetingFromCalendar(meetingId:string){
+  if(cloudBackend)return cloudApi.removeMeetingCalendarById(meetingId);
+  return apiJson('/api/calendar/remove-event',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({meetingId})});
+}
+export async function syncReadingPlanToCalendar(clubBookId:string){
+  if(cloudBackend)return cloudApi.syncReadingPlanCalendarById(clubBookId);
+  return apiJson('/api/calendar/sync-reading-plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({clubBookId})});
+}
+export async function removeReadingPlanFromCalendar(clubBookId:string){
+  if(cloudBackend)return cloudApi.removeReadingPlanCalendarById(clubBookId);
+  return apiJson('/api/calendar/remove-reading-plan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({clubBookId})});
+}
+export async function getApiHealth(){
+  try{
+    const health=cloudBackend
+      ?await fetch(`${API}/health`,{credentials:'include'}).then(r=>r.json())
+      :await apiJson('/api/health');
+    return {...health,configured:true};
+  }catch{return{ok:false,configured:Boolean(API||!import.meta.env.DEV)}}
+}
 
 export type DiscoveryBook={key:string;source:'nyt';title:string;author:string;cover:string;year?:number;isbn?:string;subjects?:string[];rank?:number;weeksOnList?:number;listName?:string;storeUrl?:string};
 export type BookDiscoveryResponse={
@@ -142,6 +156,6 @@ export type PassageTranscription={
   chapterNumber?:number;
 };
 export async function transcribePassage(input:{imageDataUrl:string;title:string;author:string;currentChapter?:number}):Promise<PassageTranscription>{
-  const j=await apiJson('/api/transcribe-passage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});
+  const j=cloudBackend?await cloudApi.transcribePassage(input):await apiJson('/api/transcribe-passage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)});
   return {text:String(j?.text||''),confidence:Number(j?.confidence||0),needsReview:Boolean(j?.needsReview),pageNumber:Number(j?.pageNumber)||undefined,chapterNumber:Number(j?.chapterNumber)||undefined};
 }

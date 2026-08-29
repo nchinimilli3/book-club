@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Bell, CheckCheck } from 'lucide-react';
 import { useApp } from '../lib/AppContext';
 import { useRouter } from '../lib/router';
-import { getNotifications, markAllNotificationsRead, markNotificationRead } from '../lib/data';
-import { supabase } from '../lib/supabase';
+import { getNotifications, markAllNotificationsRead, markNotificationRead } from '@book-club/data';
+import { supabase } from '@book-club/supabase';
 import type { AppNotification } from '../lib/model';
 
 function ago(iso:string){const ms=Date.now()-new Date(iso).getTime(),m=Math.max(1,Math.floor(ms/60000));if(m<60)return`${m}m`;const h=Math.floor(m/60);if(h<24)return`${h}h`;const d=Math.floor(h/24);return`${d}d`}

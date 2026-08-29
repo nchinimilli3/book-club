@@ -57,4 +57,5 @@ body:has(.modal-backdrop){overflow:hidden}.progress-dialog{
   font-family:var(--sans);
   font-weight:500;
 }
+.dialog-close>span{display:block;transform:translateY(-1px);line-height:1}
 @media(max-width:560px){.dialog.compact>h2{font-size:clamp(30px,8vw,36px);line-height:1;white-space:nowrap;margin-right:48px}.dialog.compact .dialog-close{top:16px;right:16px;font-size:24px;line-height:42px;text-align:center}}

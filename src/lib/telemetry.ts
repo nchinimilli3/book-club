@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase } from '@book-club/supabase';
 
 type Props = Record<string, unknown>;
 
@@ -11,28 +11,23 @@ function safeProps(props: Props = {}) {
 }
 
 export async function trackEvent(name: string, props: Props = {}) {
-  if (!supabase) return;
-  try {
-    await supabase.rpc('track_product_event', {
-      target_event_name: name,
-      target_club_id: typeof props.clubId === 'string' ? props.clubId : null,
-      target_properties: {
-        ...safeProps(props),
-        path: window.location.pathname,
-        viewport: `${window.innerWidth}x${window.innerHeight}`,
-      },
-    });
-  } catch {
-    // Telemetry must never break the product flow.
-  }
+  // Product-event writes are deliberately disabled in the browser. They add a
+  // database write for routine interactions and can trigger realtime fan-out.
+  void name; void props;
 }
 
 export async function captureClientError(error: unknown, context: Props = {}) {
   if (!supabase) return;
   const e = error instanceof Error ? error : new Error(String(error));
+  const message=e.message.slice(0,1000);
+  // Quota/network failures are expected during an outage and must not create a
+  // second stream of writes. One unique error per session is enough for triage.
+  if(/quota|egress|network|failed to fetch|request failed \(5\d\d\)/i.test(message))return;
+  const key=`bookclub:reported-error:${message}:${String(context.area||context.source||'')}`;
+  try{if(sessionStorage.getItem(key))return;sessionStorage.setItem(key,'1')}catch{}
   try {
     await supabase.rpc('log_client_error', {
-      target_message: e.message.slice(0,1000),
+      target_message: message,
       target_stack: e.stack?.slice(0,6000) || null,
       target_context: {
         ...safeProps(context),

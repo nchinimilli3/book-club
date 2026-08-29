@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, CalendarDays, Download, KeyRound, Link2, LogOut, RefreshCw, Trash2, Unlink } from 'lucide-react';
 import { useRouter } from '../lib/router';
 import { useApp } from '../lib/AppContext';
-import { supabase } from '../lib/supabase';
-import { deleteMyAccount, getMyExportData, getNotificationMode, getReadingPreferences, updateNotificationMode, updateProfileBasics, updateReadingPreferences } from '../lib/data';
+import { supabase } from '@book-club/supabase';
+import { deleteMyAccount, getMyExportData, getNotificationMode, getReadingPreferences, updateNotificationMode, updateProfileBasics, updateReadingPreferences } from '@book-club/data';
 import { Modal } from '../components/Modal';
 import { beginCalendarConnect, disconnectCalendar, getApiHealth, getCalendarStatus, type CalendarStatus } from '../lib/api';
 
@@ -50,8 +50,14 @@ export function SettingsPage(){
   }
 
   async function sendReset(){
-    const sb=supabase;if(!sb||!a.user?.email)return;
+    if(!a.user?.email)return;
     await run('password',async()=>{
+      if(import.meta.env.VITE_BACKEND==='d1'){
+        const response=await fetch(`${String(import.meta.env.VITE_API_BASE_URL||'').replace(/\/$/,'')}/api/auth/request-password-reset`,{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({email:a.user!.email,redirectTo:`${location.origin}${location.pathname}`})});
+        if(!response.ok){const payload=await response.json().catch(()=>({}));throw new Error(payload.message||'Could not send a password reset link.');}
+        return;
+      }
+      const sb=supabase;if(!sb)throw new Error('Sign-in is not configured.');
       const r=await sb.auth.resetPasswordForEmail(a.user!.email!,{redirectTo:location.origin});
       if(r.error)throw r.error;
     },`Password reset sent to ${a.user.email}.`);
@@ -100,7 +106,7 @@ export function SettingsPage(){
       <div className="settings-section-head"><h2>What are you in the mood for?</h2><span>This helps club recommendations feel timely, not generic.</span></div>
       <div className="taste-question"><b>Anything you’re not feeling right now?</b><div className="taste-chips">{['Romance','500+ pages','Fantasy','Something depressing','Nonfiction'].map(x=><button type="button" key={x} className={avoidances.includes(x)?'selected':''} onClick={()=>setAvoidances(v=>v.includes(x)?v.filter(y=>y!==x):[...v,x])}>{x}</button>)}</div></div>
       <div className="taste-question"><b>What would hit right?</b><div className="taste-chips">{['Lighter','Shorter','Fast-moving','Conversation-heavy','Surprising'].map(x=><button type="button" key={x} className={moods.includes(x)?'selected':''} onClick={()=>setMoods(v=>v.includes(x)?v.filter(y=>y!==x):[...v,x])}>{x}</button>)}</div></div>
-      <button type="button" className="secondary settings-save" disabled={!a.user||busy==='taste'} onClick={()=>a.user&&run('taste',()=>updateReadingPreferences(a.user!.id,{avoidances,moods}),'Reading mood saved.')}>{busy==='taste'?'Saving…':'Save reading mood'}</button>
+      <button type="button" className="secondary settings-save" disabled={!a.user||busy==='taste'} onClick={()=>a.user&&run('taste',async()=>{await updateReadingPreferences(a.user!.id,{avoidances,moods})},'Reading mood saved.')}>{busy==='taste'?'Saving…':'Save reading mood'}</button>
     </section>
 
     <section className="settings-section integrations-section">
@@ -114,7 +120,7 @@ export function SettingsPage(){
       <div className="settings-action-list">
         <button type="button" onClick={sendReset} disabled={busy==='password'}><KeyRound/><span><b>Password</b><small>{busy==='password'?'Sending…':'Send a secure reset link'}</small></span></button>
         <button type="button" onClick={exportData} disabled={busy==='export'}><Download/><span><b>Export my data</b><small>{busy==='export'?'Preparing…':'Download your profile, library, posts, notes, ratings, and memberships'}</small></span></button>
-        <button type="button" onClick={async()=>{await supabase?.auth.signOut()}}><LogOut/><span><b>Log out</b><small>Sign out on this device</small></span></button>
+        <button type="button" onClick={async()=>{if(import.meta.env.VITE_BACKEND==='d1'){await fetch(`${String(import.meta.env.VITE_API_BASE_URL||'').replace(/\/$/,'')}/api/auth/sign-out`,{method:'POST',credentials:'include'});await a.refresh();navigate('/',true)}else await supabase?.auth.signOut()}}><LogOut/><span><b>Log out</b><small>Sign out on this device</small></span></button>
       </div>
     </section>
 

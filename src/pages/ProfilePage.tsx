@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Eye, EyeOff, Heart, Palette, Plus, Search, Settings, Star, Sticker as StickerIcon, Upload } from 'lucide-react';
 import { useRouter } from '../lib/router';
 import { useApp } from '../lib/AppContext';
-import { getPersonalLibrary, importGoodreads, previewGoodreadsImport, repairBookCover, updatePersonalBook, updateProfileStyle, type GoodreadsImportPreview, type GoodreadsImportResult } from '../lib/data';
+import { getPersonalLibrary, importGoodreads, previewGoodreadsImport, repairBookCover, updatePersonalBook, updateProfileStyle, type GoodreadsImportPreview, type GoodreadsImportResult } from '@book-club/data';
 import { Modal } from '../components/Modal';
 import { BookCover } from '../components/BookCover';
 import { SelectMenu } from '../components/SelectMenu';
@@ -147,11 +147,26 @@ export function ProfilePage(){
     nav('/search');
   }
 
-  function setProfileImage(kind:'wallpaperUrl'|'avatarUrl',file?:File){
+  async function setProfileImage(kind:'wallpaperUrl'|'avatarUrl',file?:File){
     if(!file)return;
-    const reader=new FileReader();
-    reader.onload=()=>setStyle(s=>({...s,[kind]:String(reader.result||'')}));
-    reader.readAsDataURL(file);
+    try{
+      if(!file.type.startsWith('image/'))throw new Error('Choose an image file.');
+      const source=URL.createObjectURL(file);
+      try{
+        const image=await new Promise<HTMLImageElement>((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('That image could not be opened.'));img.src=source});
+        const limit=kind==='avatarUrl'?320:1280;
+        const scale=Math.min(1,limit/Math.max(image.naturalWidth,image.naturalHeight));
+        const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+        const context=canvas.getContext('2d');if(!context)throw new Error('That image could not be prepared.');
+        context.drawImage(image,0,0,canvas.width,canvas.height);
+        const maxBytes=kind==='avatarUrl'?90*1024:260*1024;
+        let quality=.82,blob:Blob|undefined;
+        while(quality>=.42){blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('That image could not be prepared.')),'image/webp',quality));if(blob.size<=maxBytes)break;quality-=.08}
+        if(!blob||blob.size>maxBytes)throw new Error('Choose a simpler image; it could not be optimized enough to save.');
+        const dataUrl=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(new Error('That image could not be prepared.'));reader.readAsDataURL(blob)});
+        setStyle(s=>({...s,[kind]:dataUrl}));
+      }finally{URL.revokeObjectURL(source)}
+    }catch(error:any){setNotice(error?.message||'Could not prepare that image.')}
   }
 
 
@@ -286,7 +301,7 @@ export function ProfilePage(){
 
     <Modal open={customizeOpen} onClose={()=>setCustomizeOpen(false)} title="Design your profile">
       <div className="profile-customizer">
-        <h3>Images</h3><div className="profile-image-controls"><label><span>Heading picture</span><b>Choose image</b><input type="file" accept="image/*" onChange={e=>setProfileImage('wallpaperUrl',e.target.files?.[0])}/></label><label><span>Profile picture</span><b>Choose image</b><input type="file" accept="image/*" onChange={e=>setProfileImage('avatarUrl',e.target.files?.[0])}/></label></div>
+        <h3>Images</h3><div className="profile-image-controls"><label><span>Heading picture</span><b>Choose image</b><input type="file" accept="image/*" onChange={e=>void setProfileImage('wallpaperUrl',e.target.files?.[0])}/></label><label><span>Profile picture</span><b>Choose image</b><input type="file" accept="image/*" onChange={e=>void setProfileImage('avatarUrl',e.target.files?.[0])}/></label></div>
         <h3>Wallpaper</h3><div className="palette-choices wallpaper-choices">{(['rose','olive','gold','plum','blue','paper'] as const).map(x=><button type="button" key={x} aria-label={`Use ${x} wallpaper`} className={`palette-choice ${x} ${style.palette===x?'selected':''}`} onClick={()=>setStyle({...style,palette:x,wallpaperUrl:undefined})}><i style={{backgroundImage:`url(${x==='paper'?'/wallpapers/choice-mythology.webp':`/wallpapers/club-${x}.webp`})`}}/><span>{x}</span></button>)}</div>
         <label>Profile note <span>optional</span><input maxLength={90} value={style.note||''} onChange={e=>setStyle({...style,note:e.target.value})}/></label>
         <div className="modal-actions"><button type="button" className="secondary" onClick={()=>setCustomizeOpen(false)}>Cancel</button><button type="button" className="primary" disabled={saving} onClick={saveStyle}>{saving?'Saving…':'Save design'}</button></div>

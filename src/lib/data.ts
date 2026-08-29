@@ -1,4 +1,5 @@
-import { supabase } from './supabase';
+import { supabase } from '@book-club/supabase';
+import { cloudApi } from './cloudApi';
 import { trackEvent } from './telemetry';
 import { resolveBookCover } from './api';
 import type { Book, Club, ClubBook, Member, Profile, Thought, Workspace, Tone, Phase, ProfileStyle, MarginItem, ClubRating, AppNotification, MeetingQuestion, ProgressScene } from './model';
@@ -47,11 +48,12 @@ const bookFrom = (b: any): Book => ({
   pages: b.page_count || undefined,
   year: b.first_publish_year ?? b.published_year ?? undefined,
   isbn: b.isbn13 || undefined,
+  subjects: Array.isArray(b.subjects) ? b.subjects : [],
 });
 
 function isBackendImplementationError(error:any){
   const text=`${error?.message||''} ${error?.details||''} ${error?.hint||''}`.toLowerCase();
-  return text.includes('schema cache')||text.includes('could not find the function')||text.includes('could not find a relationship')||text.includes('does not exist')||text.includes('pgrst');
+  return text.includes('schema cache')||text.includes('could not find the function')||text.includes('could not find a relationship')||text.includes('does not exist');
 }
 
 function fail(error: any, fallback: string): never {
@@ -88,9 +90,24 @@ function failMeetingSchema(error: any, fallback: string): never {
 }
 function profileAvatar(row:any){return row?.profile_style?.avatarUrl || row?.avatar_url || undefined}
 
+const clubCoverUrlCache = new Map<string,{url:string;expiresAt:number}>();
+const versionedClubCoverPath = (clubId:string) => `${clubId}/header-${crypto.randomUUID()}.webp`;
+async function resolveClubCoverUrl(value: unknown): Promise<string | undefined> {
+  if (typeof value !== 'string' || !value) return undefined;
+  const path = value.startsWith('club-media/') ? value.slice('club-media/'.length) : value;
+  if (!/^[0-9a-f-]{36}\/(?:header\.jpg|header-[0-9a-f-]{36}\.webp)$/i.test(path)) return value;
+  if (!supabase) return undefined;
+  const cached=clubCoverUrlCache.get(path);
+  if(cached&&cached.expiresAt>Date.now()+5*60*1000)return cached.url;
+  const { data, error } = await supabase.storage.from('club-media').createSignedUrl(path, 60 * 60 * 24);
+  if(error||!data?.signedUrl)return undefined;
+  clubCoverUrlCache.set(path,{url:data.signedUrl,expiresAt:Date.now()+23*60*60*1000});
+  return data.signedUrl;
+}
+
 export async function getProfile(userId: string): Promise<Profile> {
   if (!supabase) return { id: userId, displayName: 'Reader' };
-  const result = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+  const result = await supabase.from('profiles').select('id,display_name,username,avatar_url,profile_style').eq('id', userId).maybeSingle();
   if (result.error) fail(result.error, 'Could not load profile');
   const x: any = result.data;
   return { id: userId, displayName: x?.display_name || 'Reader', username: x?.username || undefined, avatarUrl: profileAvatar(x), style: x?.profile_style || undefined };
@@ -99,7 +116,7 @@ export async function getProfile(userId: string): Promise<Profile> {
 export async function getMyClubs(userId: string) {
   if (!supabase) return { clubs: [] as Club[] };
   const [clubResult, prefResult] = await Promise.all([
-    supabase.from('club_members').select('role,clubs(*)').eq('user_id', userId),
+    supabase.from('club_members').select('role,clubs(id,name,owner_id,accent_palette,palette,status,invite_code,cover_image_url,progress_scene)').eq('user_id', userId),
     supabase.from('user_preferences').select('active_club_id').eq('user_id', userId).maybeSingle(),
   ]);
   if (clubResult.error) fail(clubResult.error, 'Could not load clubs');
@@ -127,6 +144,7 @@ export async function setActiveClub(id: string) {
 }
 
 export async function createClub(name: string, tone: Tone) {
+  if (import.meta.env.VITE_BACKEND === 'd1') return (await cloudApi.createClub(name)).club;
   if (!supabase) throw new Error('Supabase unavailable');
   const { data, error } = await supabase.rpc('create_club', { club_name: name, palette: tone === 'rose' ? 'petal' : tone, mark: '' });
   if (error) fail(error, 'Could not create club');
@@ -135,6 +153,7 @@ export async function createClub(name: string, tone: Tone) {
 }
 
 export async function joinClub(code: string) {
+  if (import.meta.env.VITE_BACKEND === 'd1') return await cloudApi.joinInvite(code.trim().split('/').filter(Boolean).pop() || code);
   if (!supabase) throw new Error('Supabase unavailable');
   const clean = code.trim().split('/').filter(Boolean).pop() || code;
   const { data, error } = await supabase.rpc('join_club_by_invite', { supplied_invite_code: clean });
@@ -145,18 +164,22 @@ export async function joinClub(code: string) {
 
 export async function getWorkspace(clubId: string, userId: string): Promise<Workspace> {
   if (!supabase) throw new Error('Supabase unavailable');
-  const clubResult = await supabase.from('clubs').select('*').eq('id', clubId).single();
+  const clubResult = await supabase.from('clubs').select('id,name,owner_id,accent_palette,palette,status,invite_code,cover_image_url,progress_scene').eq('id', clubId).single();
   if (clubResult.error) fail(clubResult.error, 'Could not load club');
   const c: any = clubResult.data;
 
-  const [memberResult, clubBookResult, meetingResult, meetingOptionResult] = await Promise.all([
+  const [memberResult, clubBookResult, archivePreviewResult, archiveCountResult, meetingResult, meetingOptionResult] = await Promise.all([
     supabase.from('club_members').select('role,user_id').eq('club_id', clubId),
-    supabase.from('club_books').select('*,books(*)').eq('club_id', clubId).order('created_at', { ascending: false }),
-    supabase.from('meetings').select('*,meeting_rsvps(response,user_id)').eq('club_id', clubId).neq('status','cancelled').order('starts_at', { ascending: true }),
+    supabase.from('club_books').select('id,club_id,book_id,status,start_date,started_at,target_finish_date,target_finish_at,total_chapters,total_pages,suggested_reading_plan,created_by,created_at,books(id,title,author,cover_url,description,page_count,first_publish_year,published_year,isbn13,subjects)').eq('club_id', clubId).in('status',['idea','nominated','ballot','up_next','acquiring','reading','planning','planning_meeting','meeting','rating']).order('created_at', { ascending: false }),
+    supabase.from('club_books').select('books(id,title,author,cover_url,description,page_count,first_publish_year,published_year,isbn13,subjects)').eq('club_id',clubId).in('status',['finished','archived']).order('created_at',{ascending:false}).limit(12),
+    supabase.from('club_books').select('id',{count:'exact',head:true}).eq('club_id',clubId).in('status',['finished','archived']),
+    supabase.from('meetings').select('id,club_book_id,checkpoint_id,starts_at,meeting_type,meeting_url,join_url,meeting_rsvps(response,user_id)').eq('club_id', clubId).neq('status','cancelled').order('starts_at', { ascending: true }),
     supabase.from('meeting_options').select('id,club_book_id,checkpoint_id,starts_at,meeting_option_responses(user_id,available)').eq('club_id',clubId).order('starts_at'),
   ]);
   if (memberResult.error) fail(memberResult.error, 'Could not load club members');
   if (clubBookResult.error) fail(clubBookResult.error, 'Could not load club books');
+  if (archivePreviewResult.error) fail(archivePreviewResult.error, 'Could not load club archive preview');
+  if (archiveCountResult.error) fail(archiveCountResult.error, 'Could not count club archive');
   if (meetingResult.error) fail(meetingResult.error, 'Could not load meetings');
   // Meeting polls were added in release migration 009. An older live database should
   // not make the entire club unreadable while that migration is being applied.
@@ -188,13 +211,13 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
 
   if (active) {
     const [postResult, checkpointResult, progressResult, checkinResult, ratingResult, lockedResult, meetingQuestionResult] = await Promise.all([
-      supabase.from('posts').select('*').eq('club_book_id', active.id).order('created_at', { ascending: false }).limit(50),
-      supabase.from('reading_checkpoints').select('*').eq('club_book_id', active.id).order('due_at'),
-      supabase.from('reading_progress').select('*').eq('club_book_id', active.id),
-      supabase.from('book_checkins').select('*').eq('club_book_id', active.id),
+      supabase.from('posts').select('id,user_id,body,post_type,type,spoiler_chapter,chapter,created_at,revealed_at,locked').eq('club_book_id', active.id).order('created_at', { ascending: false }).limit(50),
+      supabase.from('reading_checkpoints').select('id,due_at,target_chapter,target_page,label').eq('club_book_id', active.id).order('due_at'),
+      supabase.from('reading_progress').select('user_id,chapter,page,percent,status,participation_status,format').eq('club_book_id', active.id),
+      supabase.from('book_checkins').select('status').eq('club_book_id', active.id),
       supabase.from('book_ratings').select('rating,review,recommend').eq('club_book_id',active.id).eq('user_id',userId).maybeSingle(),
       supabase.rpc('get_locked_post_count',{target_club_book_id:active.id}),
-      supabase.from('meeting_questions').select('*').eq('club_book_id',active.id).eq('resolved',false).order('created_at'),
+      supabase.from('meeting_questions').select('id,user_id,body,post_id,created_at').eq('club_book_id',active.id).eq('resolved',false).order('created_at'),
     ]);
     if (postResult.error) fail(postResult.error, 'Could not load discussion');
     if (checkpointResult.error) fail(checkpointResult.error, 'Could not load reading plan');
@@ -212,8 +235,8 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
     let replyRows:any[]=[]; let reactionRows:any[]=[];
     if(postIds.length){
       const [replyResult,reactionResult]=await Promise.all([
-        supabase.from('replies').select('*').in('post_id',postIds).order('created_at'),
-        supabase.from('reactions').select('*').in('post_id',postIds).order('created_at'),
+        supabase.from('replies').select('id,post_id,user_id,body,created_at').in('post_id',postIds).order('created_at'),
+        supabase.from('reactions').select('id,post_id,user_id,reaction,created_at').in('post_id',postIds).order('created_at'),
       ]);
       if(replyResult.error) fail(replyResult.error,'Could not load replies');
       if(reactionResult.error) fail(reactionResult.error,'Could not load reactions');
@@ -271,15 +294,17 @@ export async function getWorkspace(clubId: string, userId: string): Promise<Work
   const rawResponse = mtg?.meeting_rsvps?.find((r: any) => r.user_id === userId)?.response;
   const response = rawResponse === 'yes' ? 'going' : rawResponse === 'no' ? 'cant' : rawResponse;
   const meeting = mtg ? { id: mtg.id, startsAt: mtg.starts_at, checkpointId:mtg.checkpoint_id, meetingType: mtg.meeting_type, meetingUrl: mtg.meeting_url || mtg.join_url || undefined, response } : undefined;
-  const archiveBooks = clubBooks.filter((r: any) => ['finished','archived'].includes(r.status)).map((r: any) => bookFrom(r.books));
+  const archiveBooks = (archivePreviewResult.data || []).map((r: any) => bookFrom(r.books));
+  const archiveBookCount = archiveCountResult.count || 0;
   const ideaBooks: ClubBook[] = clubBooks.filter((r: any) => ['idea','nominated','ballot'].includes(r.status)).map((r: any) => {
     const suggested:any = r.created_by ? profileMap.get(r.created_by) : undefined;
     return { id: r.id, clubId, book: bookFrom(r.books), status: r.status, startDate: r.start_date || r.started_at || undefined, targetFinishDate: r.target_finish_date || r.target_finish_at || undefined, totalChapters: r.total_chapters || undefined, totalPages: r.total_pages || undefined, suggestedBy: r.created_by ? { id:r.created_by, displayName:suggested?.display_name || 'Reader', username:suggested?.username || undefined, avatarUrl:suggested?.avatar_url || undefined } : undefined };
   });
 
+  const coverImageUrl = await resolveClubCoverUrl(c.cover_image_url);
   return {
-    club: { id: c.id, name: c.name, ownerId: c.owner_id, tone: toneMap[c.accent_palette || c.palette] || 'rose', phase: phaseMap(c.status), inviteCode: c.invite_code, coverImageUrl: c.cover_image_url, memberCount: members.length, progressScene: resolveProgressScene(c) },
-    members, currentBook, ideaBooks, meeting, meetingOptions, thoughts: thoughts.map(t=>({...t,savedForMeeting:meetingQuestions.some(q=>q.postId===t.id)})), checkpoints, checkpointCheckins, acquired, myProgress: progress, archiveBooks, myClubRating, lockedPostCount, meetingQuestions,
+    club: { id: c.id, name: c.name, ownerId: c.owner_id, tone: toneMap[c.accent_palette || c.palette] || 'rose', phase: phaseMap(c.status), inviteCode: c.invite_code, coverImageUrl, memberCount: members.length, progressScene: resolveProgressScene(c) },
+    members, currentBook, ideaBooks, meeting, meetingOptions, thoughts: thoughts.map(t=>({...t,savedForMeeting:meetingQuestions.some(q=>q.postId===t.id)})), checkpoints, checkpointCheckins, acquired, myProgress: progress, archiveBooks, archiveBookCount, myClubRating, lockedPostCount, meetingQuestions,
   };
 }
 
@@ -354,7 +379,7 @@ export async function createThought(bookId: string, userId: string, body: string
   return result.data;
 }
 
-async function ensureBook(r: { title:string; author:string; cover?:string; year?:number; isbn?:string; pages?:number; description?:string }) {
+async function ensureBook(r: { title:string; author:string; cover?:string; year?:number; isbn?:string; pages?:number; description?:string; subjects?:string[] }) {
   if (!supabase) throw new Error('Supabase unavailable');
   let bookId: string | undefined;
   if (r.isbn) {
@@ -368,26 +393,34 @@ async function ensureBook(r: { title:string; author:string; cover?:string; year?
     bookId = byTitle.data?.id;
   }
   if (!bookId) {
-    const base: any = { title: r.title, author: r.author || 'Unknown author', cover_url: r.cover || null, isbn13: r.isbn || null, page_count: r.pages || null, description: r.description || null };
+    const base: any = { title: r.title, author: r.author || 'Unknown author', cover_url: r.cover || null, isbn13: r.isbn || null, page_count: r.pages || null, description: r.description || null, subjects: (r.subjects || []).slice(0,18) };
     const result = await supabase.from('books').insert({ ...base, first_publish_year: r.year || null }).select('id').single();
     if (result.error) fail(result.error, 'Could not save book metadata');
     bookId = result.data.id;
   }
+  if (bookId && r.subjects?.length) {
+    const update = await supabase.from('books').update({ subjects: r.subjects.slice(0,18) }).eq('id', bookId);
+    if (update.error && update.error.code !== 'PGRST204') fail(update.error, 'Could not save book genres');
+  }
   return bookId;
 }
 
-export async function saveBookToClub(clubId: string, r: { title:string; author:string; cover:string; year?:number; isbn?:string; pages?:number; description?:string }) {
+export async function saveBookToClub(clubId: string, r: { title:string; author:string; cover:string; year?:number; isbn?:string; pages?:number; description?:string; subjects?:string[] }) {
+  if (import.meta.env.VITE_BACKEND === 'd1') {
+    const result: any = await cloudApi.suggestBook(clubId, r.title, r.author, r.cover);
+    return { bookId: result.book?.id, clubBookId: result.book?.id, alreadySaved: Boolean(result.alreadySaved), status: result.book?.status || 'suggested' };
+  }
   if (!supabase) throw new Error('Supabase unavailable');
   const bookId = await ensureBook(r);
   const existing = await supabase.from('club_books').select('id,status').eq('club_id', clubId).eq('book_id', bookId).in('status', ['idea','nominated','ballot','up_next','acquiring','reading']).maybeSingle();
   if (existing.error && existing.error.code !== 'PGRST116') fail(existing.error, 'Could not check club ideas');
   if (existing.data?.id) return { bookId, clubBookId: existing.data.id, alreadySaved: true, status: existing.data.status };
-  const { data: authData } = await supabase.auth.getUser();
-  const withCreator:any = { club_id: clubId, book_id: bookId, status: 'idea', created_by: authData.user?.id || null };
-  const result = await supabase.from('club_books').insert(withCreator).select('id').single();
+  const result = await supabase.rpc('add_club_idea', { target_club_id: clubId, target_book_id: bookId });
   if (result.error) fail(result.error, 'Could not add book to club ideas');
-  void trackEvent('club_idea_added',{clubId,clubBookId:result.data.id,bookId});
-  return { bookId, clubBookId: result.data.id, alreadySaved: false, status: 'idea' };
+  const clubBookId = result.data?.clubBookId || result.data?.club_book_id;
+  if (!clubBookId) throw new Error('Could not add book to club ideas');
+  void trackEvent('club_idea_added',{clubId,clubBookId,bookId});
+  return { bookId, clubBookId, alreadySaved: false, status: 'idea' };
 }
 
 export async function savePersonalBook(userId: string, r: { title:string; author:string; cover?:string; year?:number; isbn?:string; pages?:number; description?:string }, { shelf='want_to_read', rating, dateFinished, isFavorite=false, source='search' }: { shelf?:string; rating?:number; dateFinished?:string|null; isFavorite?:boolean; source?:'search'|'goodreads' } = {}) {
@@ -419,13 +452,30 @@ export async function updateProfileStyle(_userId: string, style: ProfileStyle): 
   return (data || style) as ProfileStyle;
 }
 
-export async function updateClubCoverImage(clubId: string, coverImageUrl?: string | null) {
+export async function saveClubCoverImage(clubId: string, image: Blob | null, previousPath?:string) {
+  if (import.meta.env.VITE_BACKEND === 'd1') {
+    if (!image) throw new Error('Resetting to the standard header is not available in the preview backend yet.');
+    await cloudApi.uploadHeader(clubId, image);
+    return;
+  }
   if (!supabase) throw new Error('Supabase unavailable');
-  const result = await supabase
-    .from('clubs')
-    .update({ cover_image_url: coverImageUrl || null, updated_at: new Date().toISOString() })
-    .eq('id', clubId);
-  if (result.error) fail(result.error, 'Could not save club header image');
+  const path = image ? versionedClubCoverPath(clubId) : null;
+  if (image) {
+    const upload = await supabase.storage.from('club-media').upload(path!, image, { contentType: 'image/webp', cacheControl: '31536000, immutable', upsert: false });
+    if (upload.error) {
+      const detail = upload.error.message || upload.error.statusCode || 'Storage rejected the upload';
+      throw new Error(`Could not upload club header image: ${detail}`);
+    }
+  }
+  const result = await supabase.rpc('update_club_header', { target_club_id: clubId, target_cover_path: path });
+  if (result.error) {
+    const detail = result.error.message || result.error.code || 'Database rejected the update';
+    throw new Error(`Could not save club header image: ${detail}`);
+  }
+  if(previousPath&&previousPath!==path&&/^[0-9a-f-]{36}\/header-[0-9a-f-]{36}\.webp$/i.test(previousPath)){
+    void supabase.storage.from('club-media').remove([previousPath]);
+    clubCoverUrlCache.delete(previousPath);
+  }
 }
 
 export async function getBookContext(bookId: string, chapter?: number) {
@@ -452,27 +502,45 @@ export async function getPersonalLibrary(userId: string) {
 }
 
 export async function getBallot(clubId: string, userId: string) {
+  if (import.meta.env.VITE_BACKEND === 'd1') {
+    const result: any = await cloudApi.activeBallot(clubId);
+    if (!result.ballot) return null;
+    return { ...result.ballot, nominations: (result.ballot.nominations || []).map((item: any) => ({ ...item, book: bookFrom(item.book), voted: false, preference: undefined })) };
+  }
   if (!supabase) return null;
   const ballotResult = await supabase.from('ballots').select('*').eq('club_id', clubId).in('status', ['open','needs_decision']).order('created_at', { ascending: false }).limit(1).maybeSingle();
   if (ballotResult.error && ballotResult.error.code !== 'PGRST116') fail(ballotResult.error, 'Could not load ballot');
   const ballot: any = ballotResult.data;
   if (!ballot) return null;
-  const [nomResult, voteResult, preferenceResult] = await Promise.all([
+  const rankedChoice = ballot.voting_method === 'ranked_choice';
+  const [nomResult, voteResult, preferenceResult, rankingResult] = await Promise.all([
     supabase.from('nominations').select('*,books(*)').eq('ballot_id', ballot.id),
     supabase.from('votes').select('nomination_id').eq('user_id', userId),
-    supabase.from('ballot_preferences').select('nomination_id,preference').eq('ballot_id',ballot.id).eq('user_id',userId),
+    rankedChoice ? Promise.resolve({ data: [], error: null } as any) : supabase.from('ballot_preferences').select('user_id,nomination_id,preference').eq('ballot_id',ballot.id),
+    rankedChoice ? supabase.rpc('get_my_ballot_ranking', { target_ballot_id: ballot.id }) : Promise.resolve({ data: null, error: null } as any),
   ]);
   if (nomResult.error) fail(nomResult.error, 'Could not load ballot books');
   if (voteResult.error) fail(voteResult.error, 'Could not load your vote');
   const legacyPreferenceMode = Boolean(preferenceResult.error && isBallotPreferenceSchemaMissing(preferenceResult.error));
   if (preferenceResult.error && !legacyPreferenceMode) fail(preferenceResult.error, 'Could not load your ballot preferences');
-  return { ...ballot, legacyPreferenceMode, nominations: (nomResult.data || []).map((n: any) => ({ id: n.id, note: n.note ?? n.why ?? '', book: bookFrom(n.books), voted: (voteResult.data || []).some((v: any) => v.nomination_id === n.id), preference:(preferenceResult.data||[]).find((v:any)=>v.nomination_id===n.id)?.preference })) };
+  if (rankingResult.error) fail(rankingResult.error, 'Could not load your private ranking');
+  const preferences = preferenceResult.data || [];
+  const rankingIds = Array.isArray(rankingResult.data?.nominationIds) ? rankingResult.data.nominationIds : [];
+  const voterCount = rankedChoice ? Number(rankingResult.data?.voterCount || 0) : new Set(preferences.map((p: any) => p.user_id).filter(Boolean)).size;
+  return { ...ballot, rankedChoice, legacyPreferenceMode, voterCount, rankingIds, nominations: (nomResult.data || []).map((n: any) => ({ id: n.id, note: n.note ?? n.why ?? '', book: bookFrom(n.books), voted: (voteResult.data || []).some((v: any) => v.nomination_id === n.id), preference:preferences.find((v:any) => v.user_id === userId && v.nomination_id === n.id)?.preference, rank: rankingIds.indexOf(n.id)+1 })) };
 }
 
 export async function startBallotFromIdeas(clubId: string, closesAt?:string) {
+  if (import.meta.env.VITE_BACKEND === 'd1') return (await cloudApi.startBallot(clubId, closesAt ? new Date(closesAt).getTime() : undefined) as any).ballot?.id;
   if (!supabase) throw new Error('Supabase unavailable');
   const {data,error} = await supabase.rpc('start_ballot_from_ideas', { target_club_id: clubId, requested_closes_at: closesAt || null });
-  if(error) fail(error,'Could not start vote');
+  if(error){
+    const details=`${error?.message||''} ${error?.details||''} ${error?.hint||''}`.toLowerCase();
+    if(isSchemaMissing(error,'start_ballot_from_ideas')||details.includes('ballot_rankings')||details.includes('voting_method')){
+      throw new Error('Voting needs the latest Supabase database migration. Run migration 017_next_read_concierge.sql, then refresh the app.');
+    }
+    fail(error,'Could not start vote');
+  }
   void trackEvent('ballot_started',{clubId,ballotId:data});
   return data;
 }
@@ -489,6 +557,17 @@ export async function setBallotPreference(nominationId:string,preference:'strong
   const result=await supabase.rpc('set_ballot_preference',{target_nomination_id:nominationId,target_preference:preference});
   if(result.error)fail(result.error,'Could not save your preference');
   void trackEvent('ballot_preference_saved',{nominationId,preference});
+}
+
+export async function setBallotRanking(ballotId:string, nominationIds:string[]) {
+  if (import.meta.env.VITE_BACKEND === 'd1') {
+    const result: any = await cloudApi.saveRanking('', ballotId, nominationIds);
+    return result;
+  }
+  if(!supabase)throw new Error('Supabase unavailable');
+  const result=await supabase.rpc('set_ballot_ranking',{target_ballot_id:ballotId,target_nomination_ids:nominationIds});
+  if(result.error)fail(result.error,'Could not save your ranking');
+  void trackEvent('ballot_ranking_saved',{ballotId,count:nominationIds.length});
 }
 
 export async function removeClubIdea(clubBookId:string){
@@ -509,6 +588,13 @@ export async function finalizeBallot(ballotId: string) {
   if (error) fail(error, 'Could not finalize vote');
   void trackEvent('ballot_finalized',{ballotId,clubBookId:data});
   return data;
+}
+
+export async function getBallotTieBreak(ballotId:string) {
+  if(!supabase)return undefined;
+  const result=await supabase.from('ballots').select('tie_break').eq('id',ballotId).maybeSingle();
+  if(result.error)fail(result.error,'Could not load ballot result');
+  return result.data?.tie_break?.kind === 'random_draw' ? result.data.tie_break : undefined;
 }
 
 export async function decideTiedBallot(ballotId:string,nominationId:string){
@@ -695,6 +781,7 @@ export async function getMyExportData(userId:string){
 
 
 export async function createOrGetInvite(clubId:string){
+  if (import.meta.env.VITE_BACKEND === 'd1') return (await cloudApi.invite(clubId)).code;
   if(!supabase)throw new Error('Supabase unavailable');
   const {data,error}=await supabase.rpc('create_or_get_club_invite',{target_club_id:clubId});
   if(error)fail(error,'Could not create invite');
@@ -752,6 +839,7 @@ export async function updateReadingPreferences(userId:string,prefs:ReadingPrefer
 }
 
 export async function previewClubInvite(code:string){
+  if (import.meta.env.VITE_BACKEND === 'd1') return await cloudApi.previewInvite(code.trim().split('/').filter(Boolean).pop() || code);
   if(!supabase)throw new Error('Supabase unavailable');
   const clean=code.trim().split('/').filter(Boolean).pop()||code;
   const r=await supabase.rpc('preview_club_invite',{supplied_invite_code:clean});
@@ -765,12 +853,14 @@ export async function getClubInvites(clubId:string){
   return r.data||[];
 }
 export async function resetClubInvite(clubId:string){
+  if (import.meta.env.VITE_BACKEND === 'd1') return (await cloudApi.resetInvite(clubId)).code;
   if(!supabase)throw new Error('Supabase unavailable');
   const r=await supabase.rpc('reset_club_invite',{target_club_id:clubId});
   if(r.error)fail(r.error,'Could not reset invite link');
   return String(r.data||'');
 }
 export async function disableClubInvites(clubId:string){
+  if (import.meta.env.VITE_BACKEND === 'd1') { await cloudApi.disableInvites(clubId); return; }
   if(!supabase)throw new Error('Supabase unavailable');
   const r=await supabase.rpc('disable_club_invites',{target_club_id:clubId});
   if(r.error)fail(r.error,'Could not disable invite links');
