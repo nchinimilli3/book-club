@@ -22,12 +22,16 @@ function safeLink(url: string, label: string): string {
 }
 
 export function createAuth(env: Env) {
+  const appOrigin = required(env, 'APP_ORIGIN');
   const secure = new URL(required(env, 'AUTH_BASE_URL')).protocol === 'https:';
+  const trustedOrigins = [appOrigin, ...(env.APP_ALLOWED_ORIGINS || '').split(',')]
+    .map(origin => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean);
   return betterAuth({
     database: env.DB,
     secret: required(env, 'BETTER_AUTH_SECRET'),
     baseURL: required(env, 'AUTH_BASE_URL'),
-    trustedOrigins: [required(env, 'APP_ORIGIN')],
+    trustedOrigins,
     advanced: { useSecureCookies: secure, defaultCookieAttributes: { sameSite: 'lax', httpOnly: true, secure } },
     emailAndPassword: {
       enabled: true, requireEmailVerification: true, minPasswordLength: 12,

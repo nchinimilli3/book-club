@@ -17,6 +17,9 @@ bucket_name = "book-club-preview-media"
 
 [vars]
 APP_ORIGIN = "https://book-club-cog.pages.dev"
+# Explicit production plus the current Pages preview URL. Keep this list exact;
+# do not use a wildcard for credentialed auth requests.
+APP_ALLOWED_ORIGINS = "https://cfb665b8.book-club-cog.pages.dev"
 AUTH_BASE_URL = "https://book-club-api-next.postgradplans.workers.dev"
 RESEND_FROM = "BOOK CLUB <hello@example.com>"
 AUTH_EMAIL_MODE = "resend"

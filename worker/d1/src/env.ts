@@ -2,6 +2,7 @@ export interface Env {
   DB: D1Database;
   MEDIA: R2Bucket;
   APP_ORIGIN: string;
+  APP_ALLOWED_ORIGINS?: string;
   AUTH_BASE_URL: string;
   BETTER_AUTH_SECRET: string;
   GOOGLE_CLIENT_ID: string;

@@ -10,10 +10,17 @@ export function json(data: unknown, status = 200, headers: HeadersInit = {}): Re
 
 export function noContent(headers: HeadersInit = {}): Response { return new Response(null, { status: 204, headers }); }
 
+function allowedOrigins(env: Env): string[] {
+  return [env.APP_ORIGIN, ...(env.APP_ALLOWED_ORIGINS || '').split(',')]
+    .map(origin => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+}
+
 export function cors(request: Request, env: Env): HeadersInit {
   const origin = request.headers.get('origin');
-  if (origin && origin !== env.APP_ORIGIN) return {};
-  return { 'access-control-allow-origin': env.APP_ORIGIN, 'access-control-allow-credentials': 'true', 'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS', 'access-control-allow-headers': 'content-type,idempotency-key', vary: 'Origin' };
+  const allowed = allowedOrigins(env);
+  if (origin && !allowed.includes(origin)) return {};
+  return { 'access-control-allow-origin': origin || env.APP_ORIGIN, 'access-control-allow-credentials': 'true', 'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS', 'access-control-allow-headers': 'content-type,idempotency-key', vary: 'Origin' };
 }
 
 export function withCors(response: Response, request: Request, env: Env): Response {
