@@ -19,6 +19,7 @@ const defaultStyle:ProfileStyle={palette:'rose',layout:'scrapbook',note:'',stick
 const PROFILE_TARGET_KEY='bookclub:profile-save-target';
 const SEARCH_RETURN_KEY='bookclub:search-return';
 type LibraryItem = Awaited<ReturnType<typeof getPersonalLibrary>>[number];
+type ProfileImageKind = 'wallpaperUrl'|'avatarUrl';
 
 export function ProfilePage(){
   const a=useApp(),{navigate:nav}=useRouter();
@@ -42,6 +43,9 @@ export function ProfilePage(){
   const[syncError,setSyncError]=useState('');
   const[saving,setSaving]=useState(false);
   const[editorStatus,setEditorStatus]=useState('');
+  const[imageStatus,setImageStatus]=useState<Record<ProfileImageKind,string>>({wallpaperUrl:'',avatarUrl:''});
+  const[customizeBase,setCustomizeBase]=useState<ProfileStyle|null>(null);
+  const[designSaveState,setDesignSaveState]=useState<'idle'|'saving'|'saved'>('idle');
   const[verifiedCovers,setVerifiedCovers]=useState<Set<string>>(()=>new Set());
   const[failedCovers,setFailedCovers]=useState<Set<string>>(()=>new Set());
   const coverRepairAttempts=useRef<Set<string>>(new Set());
@@ -147,8 +151,12 @@ export function ProfilePage(){
     nav('/search');
   }
 
-  async function setProfileImage(kind:'wallpaperUrl'|'avatarUrl',file?:File){
+  function openCustomizer(){setCustomizeBase(structuredClone(style));setImageStatus({wallpaperUrl:'',avatarUrl:''});setDesignSaveState('idle');setCustomizeOpen(true)}
+  function discardCustomizer(){if(customizeBase)setStyle(customizeBase);setCustomizeOpen(false);setCustomizeBase(null);setImageStatus({wallpaperUrl:'',avatarUrl:''});setDesignSaveState('idle')}
+
+  async function setProfileImage(kind:ProfileImageKind,file?:File){
     if(!file)return;
+    setImageStatus(current=>({...current,[kind]:'Preparing image…'}));
     try{
       if(!file.type.startsWith('image/'))throw new Error('Choose an image file.');
       const source=URL.createObjectURL(file);
@@ -165,8 +173,9 @@ export function ProfilePage(){
         if(!blob||blob.size>maxBytes)throw new Error('Choose a simpler image; it could not be optimized enough to save.');
         const dataUrl=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(new Error('That image could not be prepared.'));reader.readAsDataURL(blob)});
         setStyle(s=>({...s,[kind]:dataUrl}));
+        setImageStatus(current=>({...current,[kind]:'Ready to save'}));
       }finally{URL.revokeObjectURL(source)}
-    }catch(error:any){setNotice(error?.message||'Could not prepare that image.')}
+    }catch(error:any){const message=error?.message||'Could not prepare that image.';setImageStatus(current=>({...current,[kind]:message}));setNotice(message)}
   }
 
 
@@ -191,9 +200,9 @@ export function ProfilePage(){
   async function saveStyle(){
     if(!a.user)return;
     const draft=structuredClone(style) as ProfileStyle;
-    writeProfileStyleCache(a.user.id,draft,true);a.applyProfileStyle(draft);setCustomizeOpen(false);
-    setSaving(true);setNotice('Saving profile design…');setSyncError('');
-    try{const persisted=await updateProfileStyle(a.user.id,draft);setStyle(persisted);a.applyProfileStyle(persisted);writeProfileStyleCache(a.user.id,persisted,false);setNotice('Profile design saved.')}catch(err:any){setSyncError(err?.message||'Couldn’t finish saving.');setNotice('Design saved on this device.')}finally{setSaving(false)}
+    writeProfileStyleCache(a.user.id,draft,true);a.applyProfileStyle(draft);
+    setSaving(true);setDesignSaveState('saving');setNotice('Saving profile design…');setSyncError('');
+    try{const persisted=await updateProfileStyle(a.user.id,draft);setStyle(persisted);a.applyProfileStyle(persisted);writeProfileStyleCache(a.user.id,persisted,false);setDesignSaveState('saved');setImageStatus(current=>({wallpaperUrl:current.wallpaperUrl?'Saved':'',avatarUrl:current.avatarUrl?'Saved':''}));setNotice('Profile design saved.');window.setTimeout(()=>{setCustomizeOpen(false);setCustomizeBase(null);setDesignSaveState('idle')},700)}catch(err:any){setSyncError(err?.message||'Couldn’t finish saving.');setNotice('Design saved on this device.');setDesignSaveState('idle')}finally{setSaving(false)}
   }
 
   function openStickerEditor(){stickerEditBase.current=structuredClone(style);setStickering(true);setNotice('')}
@@ -230,10 +239,10 @@ export function ProfilePage(){
       <div className="profile-wallpaper-shade" aria-hidden="true"/>
       <div className="profile-identity">
         <p>Your profile</p>
-        {profileAvatar&&<img className="profile-custom-avatar" src={profileAvatar} alt="" aria-hidden="true"/>}
+        {profileAvatar?<img className="profile-custom-avatar" src={profileAvatar} alt="" aria-hidden="true"/>:<span className="profile-custom-avatar profile-avatar-placeholder" aria-hidden="true">{a.profile?.displayName?.slice(0,1)||'R'}</span>}
         <h1>{a.profile?.displayName||'Reader'}</h1>
         {style.note&&<blockquote>{style.note}</blockquote>}
-        <div className="profile-hero-actions"><button type="button" className="secondary" onClick={()=>setCustomizeOpen(true)}><Palette/> Customize</button><button type="button" className="secondary" onClick={openStickerEditor}><StickerIcon/> Stickers</button><button type="button" className="icon-button" onClick={()=>nav('/me/settings')} aria-label="Settings"><Settings/></button></div>
+        <div className="profile-hero-actions"><button type="button" className="secondary" onClick={openCustomizer}><Palette/> Customize</button><button type="button" className="secondary" onClick={openStickerEditor}><StickerIcon/> Stickers</button><button type="button" className="icon-button" onClick={()=>nav('/me/settings')} aria-label="Settings"><Settings/></button></div>
       </div>
       <div className={`profile-cover-collage${libraryLoading?' is-loading':''}`} aria-label="A few books from your shelves">{libraryLoading?Array.from({length:5},(_,i)=><span className="profile-cover-placeholder" key={i} style={{'--i':i} as any}/>):collage.map((x,i)=><button type="button" key={x.book.id} style={{'--i':i} as any} onClick={()=>openBook(x)} aria-label={`Open ${x.book.title}`}><BookCover title={x.book.title} author={x.book.author} src={x.book.coverUrl}/></button>)}</div>
       <StickerBoard stickers={style.stickers||[]} editing={stickering} onChange={stickers=>setStyle(s=>({...s,stickers}))}/>
@@ -261,11 +270,6 @@ export function ProfilePage(){
     {libraryLoading?<ProfileLibraryActionsLoading/>:<section className="profile-library-actions"><div className="profile-library-copy"><h2>Add to your reading life</h2><p>Search one book, or bring over the Goodreads shelves you already built.</p><div className="profile-action-buttons"><button type="button" className="primary" onClick={()=>findForProfile('want_to_read')}><Search/> Search books <ArrowRight/></button><button type="button" className="secondary" onClick={openGoodreadsImport}><Upload/> {hasGoodreads?'Update from Goodreads':'Import from Goodreads'}</button></div></div><div className="profile-library-graphic goodreads-import-graphic"><img src="/profile/goodreads-reading-coffee.png" alt="Open books surrounding a cup of coffee"/><div className="goodreads-import-caption"><span className="goodreads-poster-mark" aria-hidden="true">G</span><div><b>Goodreads import</b><small>CSV shelves become your Book Club library</small></div></div></div></section>}
 
     {(notice||syncError)&&<div className={`import-notice${syncError?' sync-warning':''}`} role="status"><span>{notice}{syncError&&<> <b>{syncError}</b></>}</span>{syncError&&<button type="button" className="secondary" disabled={saving} onClick={()=>void retryProfileStyleSync()}>{saving?'Syncing…':'Retry cloud sync'}</button>}</div>}
-
-    {!libraryLoading&&!items.length&&<section className="import-panel goodreads-helper">
-      <div className="goodreads-copy"><span className="goodreads-mark">G</span><div><p className="goodreads-kicker">Start with your history</p><h2>Bring your books from Goodreads</h2><p>Your shelves and ratings can fill this profile in one go. Nothing is added to a club.</p></div></div>
-      <div className="goodreads-empty-actions"><button type="button" className="primary" onClick={openGoodreadsImport}><Upload/> Import Goodreads library</button><button type="button" className="quiet-action" onClick={()=>findForProfile('want_to_read')}>I’ll add books myself</button></div>
-    </section>}
 
     <Modal open={importOpen} onClose={()=>{if(importStage!=='importing')setImportOpen(false)}} title={importStage==='success'?'Your library is here':'Import from Goodreads'} className="goodreads-import-sheet">
       {importStage==='choose'&&<div className="goodreads-import-step">
@@ -299,12 +303,12 @@ export function ProfilePage(){
       <div className="rating-list">{read.length?read.map(item=><article key={item.id}><div><button type="button" className="rating-book-cover" onClick={()=>openBook(item)} aria-label={`Open ${item.book.title}`}><BookCover title={item.book.title} author={item.book.author} src={item.book.coverUrl}/></button><span><b>{item.book.title}</b><small>{item.book.author}</small></span></div><div className="star-rating">{[1,2,3,4,5].map(n=><button type="button" key={n} className={(item.rating||0)>=n?'selected':''} onClick={()=>patchBook(item,{rating:n})}><Star fill={(item.rating||0)>=n?'currentColor':'none'}/></button>)}</div></article>):<p>Add a finished book first, then rate it here.</p>}</div>
     </Modal>
 
-    <Modal open={customizeOpen} onClose={()=>setCustomizeOpen(false)} title="Design your profile">
+    <Modal open={customizeOpen} onClose={saving?()=>{}:discardCustomizer} title="Design your profile" className="profile-customizer-sheet">
       <div className="profile-customizer">
-        <h3>Images</h3><div className="profile-image-controls"><label><span>Heading picture</span><b>Choose image</b><input type="file" accept="image/*" onChange={e=>void setProfileImage('wallpaperUrl',e.target.files?.[0])}/></label><label><span>Profile picture</span><b>Choose image</b><input type="file" accept="image/*" onChange={e=>void setProfileImage('avatarUrl',e.target.files?.[0])}/></label></div>
+        <h3>Images</h3><div className="profile-image-controls"><label><span>Heading picture</span><b>{imageStatus.wallpaperUrl==='Preparing image…'?'Preparing…':'Choose image'}</b><small className={imageStatus.wallpaperUrl.startsWith('Could')||imageStatus.wallpaperUrl.startsWith('Choose')?'image-status error':'image-status'}>{imageStatus.wallpaperUrl||'Wide image · compressed before saving'}</small><input type="file" accept="image/*" disabled={saving||imageStatus.wallpaperUrl==='Preparing image…'} onChange={e=>void setProfileImage('wallpaperUrl',e.target.files?.[0])}/></label><label><span>Profile picture</span><b>{imageStatus.avatarUrl==='Preparing image…'?'Preparing…':'Choose image'}</b><small className={imageStatus.avatarUrl.startsWith('Could')||imageStatus.avatarUrl.startsWith('Choose')?'image-status error':'image-status'}>{imageStatus.avatarUrl||'Square image · compressed before saving'}</small><input type="file" accept="image/*" disabled={saving||imageStatus.avatarUrl==='Preparing image…'} onChange={e=>void setProfileImage('avatarUrl',e.target.files?.[0])}/></label></div>
         <h3>Wallpaper</h3><div className="palette-choices wallpaper-choices">{(['rose','olive','gold','plum','blue','paper'] as const).map(x=><button type="button" key={x} aria-label={`Use ${x} wallpaper`} className={`palette-choice ${x} ${style.palette===x?'selected':''}`} onClick={()=>setStyle({...style,palette:x,wallpaperUrl:undefined})}><i style={{backgroundImage:`url(${x==='paper'?'/wallpapers/choice-mythology.webp':`/wallpapers/club-${x}.webp`})`}}/><span>{x}</span></button>)}</div>
         <label>Profile note <span>optional</span><input maxLength={90} value={style.note||''} onChange={e=>setStyle({...style,note:e.target.value})}/></label>
-        <div className="modal-actions"><button type="button" className="secondary" onClick={()=>setCustomizeOpen(false)}>Cancel</button><button type="button" className="primary" disabled={saving} onClick={saveStyle}>{saving?'Saving…':'Save design'}</button></div>
+        <div className="modal-actions profile-customizer-actions"><span role="status">{designSaveState==='saving'?'Saving your design…':designSaveState==='saved'?'Design saved':imageStatus.wallpaperUrl==='Ready to save'||imageStatus.avatarUrl==='Ready to save'?'Images are ready to save':''}</span><div><button type="button" className="secondary" disabled={saving} onClick={discardCustomizer}>Cancel</button><button type="button" className="primary" disabled={saving||imageStatus.wallpaperUrl==='Preparing image…'||imageStatus.avatarUrl==='Preparing image…'} onClick={saveStyle}>{saving?'Saving…':'Save design'}</button></div></div>
       </div>
     </Modal>
   </div>

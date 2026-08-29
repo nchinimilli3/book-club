@@ -107,7 +107,7 @@ function Shell(){
           <button className="icon-button notification-button" onClick={()=>{setNotificationMenuOpen(v=>!v);setClubMenuOpen(false)}} aria-expanded={notificationMenuOpen} aria-label={`Notifications${a.unreadNotifications?` · ${a.unreadNotifications} unread`:''}`}><Bell/>{a.unreadNotifications>0&&<span className="notification-badge">{a.unreadNotifications>9?'9+':a.unreadNotifications}</span>}</button>
           {notificationMenuOpen&&<div className="notification-quick-menu" role="menu"><div><b>{a.unreadNotifications?`${a.unreadNotifications} unread`:'You’re caught up'}</b><span>Notifications</span></div><button type="button" onClick={()=>{setNotificationMenuOpen(false);navigate('/notifications')}}>View notifications</button>{a.unreadNotifications>0&&<button type="button" className="mark-all-quick" disabled={clearingNotifications} onClick={()=>void clearNotifications()}>{clearingNotifications?'Marking…':'Mark all as read'}</button>}</div>}
         </div>
-        <button className="profile-chip" onClick={()=>navigate('/me')} aria-label="Open my profile"><span>{a.profile?.avatarUrl?<img src={a.profile.avatarUrl} alt=""/>:a.profile?.displayName?.slice(0,1)||'R'}</span></button>
+        <button className="profile-chip" onClick={()=>navigate('/me')} aria-label="Open my profile"><span className={!a.profile?.avatarUrl?'avatar-placeholder':''}>{a.profile?.avatarUrl?<img src={a.profile.avatarUrl} alt=""/>:a.profile?.displayName?.slice(0,1)||'R'}</span></button>
       </div>
     </header>
     {a.offline&&<div className="offline-banner">Offline · showing your last saved club.</div>}
@@ -116,7 +116,7 @@ function Shell(){
     <nav className="mobile-nav" aria-label="Primary">
       <button onClick={()=>navigate(currentPath)}><BookOpen/><span>Club</span></button>
       <button onClick={()=>navigate('/search')}><Search/><span>Find</span></button>
-      <button onClick={()=>navigate('/me')}><span className="nav-avatar">{a.profile?.avatarUrl?<img src={a.profile.avatarUrl} alt=""/>:a.profile?.displayName?.slice(0,1)||'R'}</span><span>Me</span></button>
+      <button onClick={()=>navigate('/me')}><span className={`nav-avatar${a.profile?.avatarUrl?'':' avatar-placeholder'}`}>{a.profile?.avatarUrl?<img src={a.profile.avatarUrl} alt=""/>:a.profile?.displayName?.slice(0,1)||'R'}</span><span>Me</span></button>
     </nav>
   </div>;
 }

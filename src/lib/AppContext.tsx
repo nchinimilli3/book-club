@@ -102,7 +102,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const [result, settingsResult, notificationsResult] = await withTimeout(Promise.all([cloudApi.clubs(), cloudApi.settings(), cloudApi.notifications()]), 20000) as any;
         const mapped = result.clubs.map((club: any, index: number) => ({ id: club.id, name: club.name, ownerId: '', tone: (['rose','olive','gold','plum','blue','clay'] as const)[index % 6], phase: 'setup' as const, coverImageUrl: club.cover_key || undefined, memberCount: 1 }));
         const settings = settingsResult.settings || {};
-        const freshProfile = { id: u.id, displayName: settingsResult.user?.name || u.name, username: settings.username || undefined, avatarUrl: settingsResult.user?.image || undefined, style: settings.style || undefined };
+        const freshProfile = { id: u.id, displayName: settingsResult.user?.name || u.name, username: settings.username || undefined, avatarUrl: settingsResult.user?.image || settings.style?.avatarUrl || undefined, style: settings.style || undefined };
         const cachedStyle = readProfileStyleCache(u.id);
         setProfile(cachedStyle?.pending ? { ...freshProfile, style: cachedStyle.style } : freshProfile);
         setUnreadNotifications((notificationsResult.notifications || []).filter((item:any) => !item.read_at).length);
