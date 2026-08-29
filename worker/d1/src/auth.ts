@@ -9,8 +9,15 @@ async function sendEmail(env: Env, to: string, subject: string, html: string): P
     return;
   }
   if (env.AUTH_EMAIL_MODE === 'mailjet') {
-    const apiKey = required(env, 'MAILJET_API_KEY');
-    const secretKey = required(env, 'MAILJET_SECRET_KEY');
+    let apiKey: string;
+    let secretKey: string;
+    try {
+      apiKey = required(env, 'MAILJET_API_KEY');
+      secretKey = required(env, 'MAILJET_SECRET_KEY');
+    } catch (error) {
+      console.error(JSON.stringify({ event: 'email_provider_error', provider: 'mailjet', category: 'missing_credentials' }));
+      throw error;
+    }
     const response = await fetch('https://api.mailjet.com/v3.1/send', {
       method: 'POST',
       headers: {
@@ -26,7 +33,30 @@ async function sendEmail(env: Env, to: string, subject: string, html: string): P
         }],
       }),
     });
-    if (!response.ok) throw new Error(`Mailjet email delivery failed (${response.status}).`);
+    const responseText = await response.text();
+    if (!response.ok) {
+      const normalized = responseText.toLowerCase();
+      const category = response.status === 401 || response.status === 403
+        ? 'invalid_credentials'
+        : response.status === 429
+          ? 'rate_limited'
+          : response.status >= 500
+            ? 'provider_unavailable'
+            : response.status === 400 && /(sender|from|authorized|verified)/.test(normalized)
+              ? 'sender_not_approved'
+              : 'request_rejected';
+      console.error(JSON.stringify({ event: 'email_provider_error', provider: 'mailjet', status: response.status, category }));
+      let providerMessage = 'Mailjet rejected the email request.';
+      try {
+        const payload = JSON.parse(responseText) as { ErrorMessage?: unknown; ErrorInfo?: unknown };
+        const message = typeof payload.ErrorMessage === 'string' ? payload.ErrorMessage : typeof payload.ErrorInfo === 'string' ? payload.ErrorInfo : '';
+        if (message) providerMessage = message.replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[email]').replace(/https?:\/\/\S+/gi, '[link]').slice(0, 240);
+      } catch {
+        // Keep the generic safe message when Mailjet returns a non-JSON response.
+      }
+      throw new Error(`Mailjet email delivery failed (${response.status}): ${providerMessage}`);
+    }
+    console.log(JSON.stringify({ event: 'email_provider_accepted', provider: 'mailjet', status: response.status }));
     return;
   }
   const response = await fetch('https://api.resend.com/emails', {
