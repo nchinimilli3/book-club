@@ -633,3 +633,8 @@
     overflow-wrap:anywhere!important;
   }
 }
+
+/* Keep action pairs centered and equally easy to tap inside the club meeting card. */
+.meeting-panel .meeting-card-actions{width:min(100%,360px);margin-inline:auto;justify-content:center}
+.meeting-panel .meeting-card-actions>button{flex:1 1 0;min-width:0;justify-content:center;text-align:center;min-height:52px}
+@media(max-width:520px){.meeting-panel .meeting-card-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;width:100%;padding-top:18px}.meeting-panel .meeting-card-actions>button{width:100%}}

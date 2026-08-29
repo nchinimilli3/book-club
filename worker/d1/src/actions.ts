@@ -102,10 +102,11 @@ export async function checkpointCheckin(request: Request, env: Env, session: Aut
 
 export async function finalizeBallotAction(_request: Request, env: Env, session: AuthSession | null, ballotId: string): Promise<Response> {
   requireSession(session);
-  const ballot = await env.DB.prepare('SELECT club_id, status FROM ballots WHERE id=?').bind(ballotId).first<{ club_id: string; status: string }>();
+  const ballot = await env.DB.prepare('SELECT club_id, status, finalized_book_id FROM ballots WHERE id=?').bind(ballotId).first<{ club_id: string; status: string; finalized_book_id: string | null }>();
   if (!ballot) throw new HttpError(404, 'Ballot not found.', 'not_found');
   await requireMember(env, session, ballot.club_id, 'admin');
-  if (ballot.status !== 'open') throw new HttpError(409, 'This ballot has already been finalized.', 'ballot_closed');
+  if (ballot.status === 'finalized' && ballot.finalized_book_id) return json({ bookId: ballot.finalized_book_id, tieBreak: null, alreadyFinalized: true });
+  if (ballot.status !== 'open') throw new HttpError(409, 'This ballot is no longer open.', 'ballot_closed');
   const [candidateRows, rankingRows] = await env.DB.batch([
     env.DB.prepare('SELECT book_id FROM ballot_books WHERE ballot_id=? ORDER BY book_id ASC').bind(ballotId),
     env.DB.prepare('SELECT user_id, book_id, rank FROM ballot_rankings WHERE ballot_id=? ORDER BY user_id, rank').bind(ballotId),
@@ -128,13 +129,15 @@ export async function finalizeBallotAction(_request: Request, env: Env, session:
     active.delete(eliminated[randomIndex(eliminated.length)]);
     finalTie = [...active];
   }
-  const chosen = finalTie[randomIndex(finalTie.length)]; const now = Date.now();
+  const chosen = finalTie[randomIndex(finalTie.length)]; const now = Date.now(); const startDate = new Date().toISOString().slice(0, 10);
   await env.DB.batch([
     env.DB.prepare("UPDATE ballots SET status='finalized', finalized_book_id=?, updated_at=? WHERE id=? AND status='open'").bind(chosen, now, ballotId),
-    env.DB.prepare("UPDATE books SET status='current', updated_at=? WHERE id=? AND club_id=?").bind(now, chosen, ballot.club_id),
-    env.DB.prepare("UPDATE books SET status='suggested', updated_at=? WHERE club_id=? AND status='ballot' AND id<>?").bind(now, ballot.club_id, chosen),
+    env.DB.prepare("UPDATE books SET status='current', start_date=COALESCE(start_date, ?), updated_at=? WHERE id=? AND club_id=? AND EXISTS (SELECT 1 FROM ballots WHERE id=? AND finalized_book_id=?)").bind(startDate, now, chosen, ballot.club_id, ballotId, chosen),
+    env.DB.prepare("UPDATE books SET status='suggested', updated_at=? WHERE club_id=? AND status='ballot' AND id<>? AND EXISTS (SELECT 1 FROM ballots WHERE id=? AND finalized_book_id=?)").bind(now, ballot.club_id, chosen, ballotId, chosen),
   ]);
-  return json({ bookId: chosen, tieBreak: finalTie.length > 1 ? { kind: 'random_draw' } : null });
+  const finalized = await env.DB.prepare('SELECT finalized_book_id FROM ballots WHERE id=?').bind(ballotId).first<{ finalized_book_id: string | null }>();
+  if (!finalized?.finalized_book_id) throw new HttpError(409, 'This ballot could not be finalized.', 'ballot_closed');
+  return json({ bookId: finalized.finalized_book_id, tieBreak: finalized.finalized_book_id === chosen && finalTie.length > 1 ? { kind: 'random_draw' } : null, alreadyFinalized: finalized.finalized_book_id !== chosen });
 }
 
 export async function cancelMeetingAction(env: Env, session: AuthSession | null, meetingId: string): Promise<Response> {

@@ -109,7 +109,23 @@
   font:750 13px/1 var(--sans);
 }.shelf-filter-empty{
   margin-top:18px;
-}@media(max-width:760px){
+}
+
+/* Compact shared shelf card for the club home. */
+.club-shelf-panel{min-height:0!important;padding:26px!important;background:linear-gradient(145deg,#f5f0e8,#edf2f3)!important;overflow:hidden}
+.club-shelf-panel header{align-items:flex-start!important;gap:14px}
+.club-shelf-panel header>div{display:grid;gap:4px;min-width:0}
+.club-shelf-panel header span{font:700 22px/1 var(--serif)}
+.club-shelf-panel header small{font-size:12px;line-height:1.35;color:var(--muted)}
+.club-shelf-panel header>button{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;min-height:38px;padding:0 10px;border:1px solid var(--line-strong);border-radius:9px;background:rgba(255,255,255,.78);font-size:12px;font-weight:780}
+.club-shelf-panel .mini-shelf{height:auto;min-height:116px;margin-top:18px;padding:0 2px 2px;gap:12px;overflow-x:auto;scrollbar-width:none}
+.club-shelf-panel .mini-shelf::-webkit-scrollbar{display:none}
+.club-shelf-panel .mini-shelf button{width:76px;flex:0 0 76px}
+.club-shelf-panel .mini-shelf img,.club-shelf-panel .mini-shelf .typographic-cover{width:76px;height:114px;border-radius:3px;box-shadow:0 9px 18px rgba(35,31,26,.16)}
+.club-shelf-empty{display:flex;align-items:center;min-height:116px;margin:16px 0 0!important;padding:14px 0 2px;border-top:1px solid rgba(36,30,26,.12);color:var(--muted)!important;font-size:14px!important}
+@media(max-width:720px){.club-shelf-panel{padding:22px!important}.club-shelf-panel .mini-shelf{min-height:104px}.club-shelf-panel .mini-shelf button{width:68px;flex-basis:68px}.club-shelf-panel .mini-shelf img,.club-shelf-panel .mini-shelf .typographic-cover{width:68px;height:102px}.club-shelf-empty{min-height:104px}}
+
+@media(max-width:760px){
   .acrylic-profile-shelf>header{
     align-items:flex-start!important;
     gap:14px!important;

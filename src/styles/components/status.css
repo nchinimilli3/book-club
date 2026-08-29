@@ -18,3 +18,8 @@
 @media(max-width:700px){.production-state{padding-inline:8px}}
 
 @media(max-width:900px){.save-notice{bottom:104px;left:16px;right:16px;width:auto;max-width:none;margin-inline:0;box-sizing:border-box;text-align:center}}
+
+/* Shared feedback: success/info is transient, errors remain until dismissed. */
+.production-feedback{display:flex;align-items:center;gap:12px}
+.production-feedback .dismiss-notice{margin-left:auto;display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:50%;background:transparent;color:currentColor;font-size:22px;line-height:1}
+@media(max-width:900px){.production-feedback{text-align:left}.production-feedback .dismiss-notice{flex:0 0 28px}}

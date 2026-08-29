@@ -5,6 +5,7 @@ import { useApp } from '../lib/AppContext';
 import { supabase } from '@book-club/supabase';
 import { deleteMyAccount, getMyExportData, getNotificationMode, getReadingPreferences, updateNotificationMode, updateProfileBasics, updateReadingPreferences } from '@book-club/data';
 import { Modal } from '../components/Modal';
+import { FeedbackMessage } from '../components/PageState';
 import { beginCalendarConnect, disconnectCalendar, getApiHealth, getCalendarStatus, type CalendarStatus } from '../lib/api';
 
 type Notice = { kind:'ok'|'error'; text:string } | null;
@@ -82,7 +83,7 @@ export function SettingsPage(){
     <button type="button" className="back-link" onClick={()=>navigate('/me')}><ArrowLeft/> Profile</button>
     <header className="page-title settings-title"><div><h1>Settings</h1></div></header>
 
-    {notice&&<div className={`settings-notice ${notice.kind}`} role="status">{notice.text}</div>}
+    {notice&&<FeedbackMessage kind={notice.kind==='error'?'error':'success'} className={`settings-notice ${notice.kind}`}>{notice.text}</FeedbackMessage>}
 
     <section className="settings-section">
       <div className="settings-section-head"><h2>Profile</h2><span>Shown to people in your clubs</span></div>

@@ -13,9 +13,8 @@ function cloudWorkspace(raw:any, club:Club):Workspace {
   const book=(row:any)=>({id:String(row.id),title:String(row.title||'Untitled'),author:String(row.author||'Unknown author'),coverUrl:row.cover_url||undefined,description:row.description||undefined,pages:Number(row.pages)||undefined,year:Number(row.published_year)||undefined,isbn:row.isbn||undefined,subjects:Array.isArray(row.subjects)?row.subjects:[]});
   const clubBook=(row:any)=>({id:String(row.id),clubId:club.id,book:book(row),status:String(row.status||'suggested'),startDate:row.start_date||undefined,targetFinishDate:row.target_finish_date||undefined,totalChapters:Number(row.total_chapters)||undefined,totalPages:Number(row.total_pages)||undefined});
   const current=raw.currentBook?clubBook(raw.currentBook):undefined;
-  const memberCount=Array.isArray(raw.members)?raw.members.length:0;
   const phase = current
-    ? current.status === 'completed' ? 'rating' : Number(raw.acquired||0) < memberCount ? 'acquiring' : 'reading'
+    ? current.status === 'completed' ? 'rating' : 'reading'
     : (raw.books || []).some((item:any) => item.status === 'ballot') ? 'choosing' : 'setup';
   return {
     club:{...club,ownerId:String(raw.club?.created_by||club.ownerId),phase,coverImageUrl:raw.club?.cover_key||club.coverImageUrl,memberCount:Array.isArray(raw.members)?raw.members.length:club.memberCount},
