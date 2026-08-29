@@ -105,6 +105,15 @@ export function createAuth(env: Env) {
     baseURL: required(env, 'AUTH_BASE_URL'),
     trustedOrigins,
     advanced: { useSecureCookies: secure, defaultCookieAttributes: { sameSite: 'lax', httpOnly: true, secure } },
+    // Friends can begin with email/password and later use Google for that same
+    // verified Google address. This does not permit arbitrary providers or
+    // mismatched email addresses to take over an account.
+    account: {
+      accountLinking: {
+        trustedProviders: ['google'],
+        requireLocalEmailVerified: false,
+      },
+    },
     emailAndPassword: {
       // Launch mode: friends can use an email/password account immediately.
       // Email verification can be restored once a reliably authenticated
