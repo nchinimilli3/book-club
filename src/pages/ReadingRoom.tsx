@@ -99,6 +99,7 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
 
   useEffect(()=>{
     let cancelled=false;
+    if(w.contextConfigured===false){setContext([]);setContextLoading(false);setContextError('');return()=>{cancelled=true}};
     setContextLoading(true);setContextError('');
     (async()=>{
       try{
@@ -107,11 +108,11 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
         if(cached.length){setContext(cached);return}
         const generated=await getReaderContext({bookId:b.id,title:b.title,author:b.author,year:b.year,chapter});
         if(!cancelled)setContext(generated);
-      }catch(err:any){if(!cancelled)setContextError('Context refresh is temporarily unavailable. Showing the book details we have.')}
+      }catch(err:any){if(!cancelled)setContextError(err?.message||'Context refresh is temporarily unavailable.')}
       finally{if(!cancelled)setContextLoading(false)}
     })();
     return()=>{cancelled=true};
-  },[b.id,b.title,b.author,b.year,chapter,contextRetry]);
+  },[b.id,b.title,b.author,b.year,chapter,contextRetry,w.contextConfigured]);
 
   async function loadMargins(){if(a.user)try{setMargins(await getMargins(currentBook.id,a.user.id))}catch(err:any){setNotice(err?.message||'Could not load your margins.')}}
   useEffect(()=>{void loadMargins()},[currentBook.id,a.user?.id]);
@@ -137,11 +138,7 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
   const nextMeetingCheckpoint=nextCheckpoint;
   const referenceMatches=referenceQuery.trim()?context.filter(x=>`${x.title||''} ${x.summary_short||''} ${x.summary_medium||''}`.toLowerCase().includes(referenceQuery.trim().toLowerCase())).slice(0,4):[];
   const nonCharacterContext=context.filter(x=>!String(x.kind).toLowerCase().includes('character'));
-  const fallbackContext=[
-    b.description?{id:'catalog-overview',kind:'overview',title:'About this book',summary_short:b.description,summary_medium:b.description,summary_deep:b.description,context_sources:[]}:null,
-    (b.year||b.pages)?{id:'catalog-details',kind:'metadata',title:'At a glance',summary_short:[b.year?`Published ${b.year}`:null,b.pages?`${b.pages} pages`:null,`Written by ${b.author}`].filter(Boolean).join(' · '),summary_medium:[b.year?`Published ${b.year}`:null,b.pages?`${b.pages} pages`:null,`Written by ${b.author}`].filter(Boolean).join(' · '),summary_deep:[b.year?`Published ${b.year}`:null,b.pages?`${b.pages} pages`:null,`Written by ${b.author}`].filter(Boolean).join(' · '),context_sources:[]}:null,
-  ].filter(Boolean) as any[];
-  const contextItems=nonCharacterContext.length?nonCharacterContext:fallbackContext;
+  const contextItems=w.contextConfigured===false?[{id:'context-not-configured',kind:'setup',title:'Reader context is not configured yet.',summary_short:'This feature will appear after an OpenAI key is configured on the Worker.',summary_medium:'This feature will appear after an OpenAI key is configured on the Worker.',summary_deep:'This feature will appear after an OpenAI key is configured on the Worker.',context_sources:[]}]:nonCharacterContext;
   const hasDepthVariants=contextItems.some((x:any)=>{const short=String(x.summary_short||'').trim(),medium=String(x.summary_medium||'').trim(),deep=String(x.summary_deep||'').trim();return Boolean((medium&&medium!==short)||(deep&&deep!==medium&&deep!==short))});
   const planIcsHref=readingPlanIcsHref({clubName:w.club.name,bookTitle:b.title,checkpoints:w.checkpoints,finishDate:currentBook.targetFinishDate,meeting:activeMeeting?{id:activeMeeting.id,startsAt:activeMeeting.startsAt,meetingUrl:activeMeeting.meetingUrl}:undefined});
   const nextCheckpointGoogle=nextCheckpoint?googleCheckpointHref(`${b.title} · ${nextCheckpoint.targetChapter?`Through Chapter ${nextCheckpoint.targetChapter}`:nextCheckpoint.targetPage?`Through page ${nextCheckpoint.targetPage}`:'Reading checkpoint'}`,nextCheckpoint.dueAt,`${w.club.name} reading checkpoint`):'';

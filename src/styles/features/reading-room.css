@@ -1175,3 +1175,10 @@
   .quick-passage-page-number{grid-template-columns:minmax(0,1fr) 86px}
   .quick-passage-footer .quick-passage-reset{padding-inline:9px;font-size:10.5px}
 }
+
+/* Keep the reset action a readable, full-width secondary button on phones. */
+@media(max-width:760px){
+  .quick-passage-footer{grid-template-columns:1fr!important;gap:8px!important;justify-items:stretch!important}
+  .quick-passage-footer .quick-passage-reset{display:inline-flex!important;width:100%!important;min-width:0!important;height:40px!important;padding:0 12px!important;font-size:12px!important;white-space:nowrap!important}
+  .quick-passage-footer .quick-passage-save{width:100%!important}
+}

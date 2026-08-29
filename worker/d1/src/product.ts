@@ -181,8 +181,15 @@ export async function rateBook(request: Request, env: Env, session: AuthSession 
   if (!book) throw new HttpError(404, 'Book not found.', 'not_found');
   const review = optionalText(input.review, 10_000); const recommend = input.recommend === undefined ? null : input.recommend === true ? 1 : 0; const now = Date.now();
   await withIdempotency(env, session.user.id, request.headers.get('idempotency-key'), `rating:${bookId}`, async () => {
-    await env.DB.prepare(`INSERT INTO book_ratings (club_id, book_id, user_id, rating, review, recommend, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(book_id, user_id) DO UPDATE SET rating=excluded.rating, review=excluded.review, recommend=excluded.recommend, updated_at=excluded.updated_at`).bind(clubId, bookId, session.user.id, rating, review, recommend, now, now).run();
+    const ratingInsert = env.DB.prepare(`INSERT INTO book_ratings (club_id, book_id, user_id, rating, review, recommend, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(book_id, user_id) DO UPDATE SET rating=excluded.rating, review=excluded.review, recommend=excluded.recommend, updated_at=excluded.updated_at`).bind(clubId, bookId, session.user.id, rating, review, recommend, now, now);
+    const archiveWhenComplete = env.DB.prepare(`UPDATE books SET status='archived', updated_at=?
+      WHERE id=? AND club_id=? AND status='completed'
+        AND (SELECT COUNT(*) FROM club_memberships WHERE club_id=?) > 0
+        AND (SELECT COUNT(*) FROM club_memberships WHERE club_id=?) =
+            (SELECT COUNT(DISTINCT user_id) FROM book_ratings WHERE club_id=? AND book_id=?)`)
+      .bind(now, bookId, clubId, clubId, clubId, clubId, bookId);
+    await env.DB.batch([ratingInsert, archiveWhenComplete]);
     return { bookId, rating };
   });
   return json({ saved: true });

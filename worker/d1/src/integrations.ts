@@ -20,11 +20,6 @@ async function aiJson(env: Env, prompt: string): Promise<unknown> {
   try { return JSON.parse(outputText(payload)); } catch { throw new HttpError(502, 'AI returned an invalid response.', 'ai_unavailable'); }
 }
 
-function fallbackContext(title: string, author: string, subjects: string[] = []) {
-  const themes = subjects.length ? `Catalog topics include ${subjects.slice(0, 6).join(', ')}.` : 'Reader context will appear here once source-backed material is available.';
-  return { items: [{ id: 'fallback-context', kind: 'context', title: `About ${title}`, summary_short: author ? `${title} is by ${author}. ${themes}` : themes, summary_medium: themes, summary_deep: themes, spoiler_chapter: null, context_sources: [] }], ai: false, fallback: true };
-}
-
 export async function bookDiscovery(env: Env): Promise<Response> {
   if (!env.NYT_BOOKS_API_KEY) return json({ nyt: [], nytConfigured: false, nytStatus: 'not_configured', apiReachable: true });
   const url = new URL(NYT_BOOKS_OVERVIEW);
@@ -58,7 +53,7 @@ export async function readerContext(request: Request, env: Env, session: AuthSes
   const input = await body<{ bookId?: unknown; title?: unknown; author?: unknown; chapter?: unknown }>(request);
   const title = string(input.title, 'Book title', { min: 1, max: 240 }); const author = typeof input.author === 'string' ? input.author.trim().slice(0, 240) : '';
   const bookId = typeof input.bookId === 'string' ? input.bookId : null;
-  let clubId: string | null = null; let subjects: string[] = [];
+  let clubId: string | null = null;
   if (bookId) {
     const book = await env.DB.prepare('SELECT club_id FROM books WHERE id=?').bind(bookId).first<{ club_id: string }>();
     if (!book) throw new HttpError(404, 'Book not found.', 'not_found');
@@ -66,12 +61,13 @@ export async function readerContext(request: Request, env: Env, session: AuthSes
     const cached = await env.DB.prepare('SELECT value_json FROM ai_context_cache WHERE cache_key=? AND club_id=? AND expires_at>?').bind(`reader:${bookId}:${Math.max(0, Number(input.chapter) || 0)}`, clubId, Date.now()).first<{ value_json: string }>();
     if (cached) { try { return json({ ...JSON.parse(cached.value_json), cached: true }); } catch { /* regenerate safely */ } }
   }
-  if (!env.OPENAI_API_KEY) return json(fallbackContext(title, author, subjects));
+  if (!env.OPENAI_API_KEY) throw new HttpError(503, 'Reader context is not configured yet.', 'ai_not_configured');
   const parsed = await aiJson(env, `Create a spoiler-safe reader companion for "${title}" by ${author || 'Unknown author'}, through chapter ${Math.max(0, Number(input.chapter) || 0)}. Do not invent plot, characters, or facts. Return only JSON: {"items":[{"kind":"context","title":"...","summary_short":"...","summary_medium":"...","summary_deep":"..."}]}. Provide at most four concise items.`) as { items?: unknown };
   const items = Array.isArray(parsed.items) ? parsed.items.map((item, index) => {
     const row = item as Record<string, unknown>; return { id: `reader-${index}`, kind: String(row.kind || 'context').slice(0, 40), title: String(row.title || '').slice(0, 240), summary_short: String(row.summary_short || '').slice(0, 1200), summary_medium: String(row.summary_medium || row.summary_short || '').slice(0, 3000), summary_deep: String(row.summary_deep || row.summary_medium || row.summary_short || '').slice(0, 6000), spoiler_chapter: null, context_sources: [] };
   }).filter(item => item.title && item.summary_short) : [];
-  const result = { items: items.length ? items : fallbackContext(title, author, subjects).items, ai: items.length > 0 };
+  if (!items.length) throw new HttpError(502, 'Reader context is temporarily unavailable.', 'ai_unavailable');
+  const result = { items, ai: true };
   if (clubId && bookId) await env.DB.prepare('INSERT INTO ai_context_cache (cache_key, club_id, value_json, expires_at, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(cache_key) DO UPDATE SET value_json=excluded.value_json, expires_at=excluded.expires_at').bind(`reader:${bookId}:${Math.max(0, Number(input.chapter) || 0)}`, clubId, JSON.stringify(result), Date.now() + 7 * 24 * 60 * 60 * 1000, Date.now()).run();
   return json(result);
 }

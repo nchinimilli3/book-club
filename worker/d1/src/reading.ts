@@ -19,7 +19,7 @@ export async function readingRoom(env: Env, session: AuthSession | null, clubId:
       FROM checkpoint_options o LEFT JOIN checkpoint_votes v ON v.option_id = o.id
       WHERE o.club_id = ? GROUP BY o.id ORDER BY o.starts_at ASC LIMIT 100`).bind(session?.user.id, clubId).all()
     : { results: [] };
-  return json({ book, progress: progress.results[0] ?? null, checkpoints: checkpoints.results, meetingOptions: options.results });
+  return json({ book, progress: progress.results[0] ?? null, checkpoints: checkpoints.results, meetingOptions: options.results, contextConfigured: Boolean(env.OPENAI_API_KEY) });
 }
 
 export async function saveProgress(request: Request, env: Env, session: AuthSession | null, clubId: string, bookId: string): Promise<Response> {
@@ -33,11 +33,21 @@ export async function saveProgress(request: Request, env: Env, session: AuthSess
   const book = await env.DB.prepare('SELECT id FROM books WHERE id = ? AND club_id = ?').bind(bookId, clubId).first();
   if (!book) throw new HttpError(404, 'Book not found.', 'not_found');
   const now = Date.now();
-  await env.DB.prepare(`INSERT INTO reading_progress (club_id, book_id, user_id, status, chapter, page, percent, format, updated_at)
+  const progressStatement = env.DB.prepare(`INSERT INTO reading_progress (club_id, book_id, user_id, status, chapter, page, percent, format, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(book_id, user_id) DO UPDATE SET status=excluded.status, chapter=excluded.chapter, page=excluded.page,
     percent=excluded.percent, format=excluded.format, updated_at=excluded.updated_at`)
-    .bind(clubId, bookId, session.user.id, status, chapter, page, percent, format, now).run();
+    .bind(clubId, bookId, session.user.id, status, chapter, page, percent, format, now);
+  const statements: D1PreparedStatement[] = [progressStatement];
+  if (status === 'finished') {
+    statements.push(env.DB.prepare(`UPDATE books SET status='completed', updated_at=?
+      WHERE id=? AND club_id=? AND status='current'
+        AND (SELECT COUNT(*) FROM club_memberships WHERE club_id=?) > 0
+        AND (SELECT COUNT(*) FROM club_memberships WHERE club_id=?) =
+            (SELECT COUNT(DISTINCT user_id) FROM reading_progress WHERE club_id=? AND book_id=? AND status='finished')`)
+      .bind(now, bookId, clubId, clubId, clubId, clubId, bookId));
+  }
+  await env.DB.batch(statements);
   return json({ progress: { status, chapter, page, percent, format, updated_at: now } });
 }
 

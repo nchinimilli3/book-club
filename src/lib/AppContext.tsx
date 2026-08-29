@@ -13,10 +13,13 @@ function cloudWorkspace(raw:any, club:Club):Workspace {
   const book=(row:any)=>({id:String(row.id),title:String(row.title||'Untitled'),author:String(row.author||'Unknown author'),coverUrl:row.cover_url||undefined,description:row.description||undefined,pages:Number(row.pages)||undefined,year:Number(row.published_year)||undefined,isbn:row.isbn||undefined,subjects:Array.isArray(row.subjects)?row.subjects:[]});
   const clubBook=(row:any)=>({id:String(row.id),clubId:club.id,book:book(row),status:String(row.status||'suggested'),startDate:row.start_date||undefined,targetFinishDate:row.target_finish_date||undefined,totalChapters:Number(row.total_chapters)||undefined,totalPages:Number(row.total_pages)||undefined});
   const current=raw.currentBook?clubBook(raw.currentBook):undefined;
-  const phase = current ? 'reading' : (raw.books || []).some((item:any) => item.status === 'ballot') ? 'choosing' : 'setup';
+  const memberCount=Array.isArray(raw.members)?raw.members.length:0;
+  const phase = current
+    ? current.status === 'completed' ? 'rating' : Number(raw.acquired||0) < memberCount ? 'acquiring' : 'reading'
+    : (raw.books || []).some((item:any) => item.status === 'ballot') ? 'choosing' : 'setup';
   return {
     club:{...club,ownerId:String(raw.club?.created_by||club.ownerId),phase,coverImageUrl:raw.club?.cover_key||club.coverImageUrl,memberCount:Array.isArray(raw.members)?raw.members.length:club.memberCount},
-    members:(raw.members||[]).map((member:any)=>({id:String(member.user_id),displayName:String(member.name||'Reader'),username:member.username||undefined,avatarUrl:member.image||member.style?.avatarUrl||undefined,style:member.style||undefined,role:String(member.role||'member'),chapter:Number(member.chapter)||undefined,page:Number(member.page)||undefined,percent:typeof member.percent==='number'?member.percent:undefined,status:member.status||undefined,format:member.format||undefined})),
+    members:(raw.members||[]).map((member:any)=>({id:String(member.user_id),displayName:String(member.name||'Reader'),username:member.username||undefined,avatarUrl:member.image||member.style?.avatarUrl||undefined,style:member.style||undefined,role:String(member.role||'member'),chapter:Number(member.chapter)||undefined,page:Number(member.page)||undefined,percent:typeof member.percent==='number'?member.percent:undefined,status:member.format?'acquired':member.status||undefined,format:member.format||undefined})),
     currentBook:current,
     ideaBooks:(raw.books||[]).filter((item:any)=>item.status==='suggested'||item.status==='ballot').map(clubBook),
     meeting:(raw.meetings||[]).find((item:any)=>item.book_id===current?.id)?.id?(()=>{const item=(raw.meetings||[]).find((entry:any)=>entry.book_id===current?.id);return {id:String(item.id),startsAt:new Date(Number(item.starts_at)).toISOString(),checkpointId:item.checkpoint_id||undefined,meetingType:item.meeting_type||undefined,meetingUrl:item.meeting_url||undefined,response:item.my_rsvp==='yes'?'going':item.my_rsvp==='no'?'cant':item.my_rsvp||undefined,status:item.status||undefined}})():undefined,
@@ -26,7 +29,7 @@ function cloudWorkspace(raw:any, club:Club):Workspace {
     checkpointCheckins:(raw.checkpointCheckins||[]).map((checkin:any)=>({checkpointId:String(checkin.checkpoint_id),userId:String(checkin.user_id),status:checkin.status,updatedAt:new Date(Number(checkin.updated_at)).toISOString()})),
     acquired:Number(raw.acquired)||0,myProgress:raw.myProgress?{chapter:Number(raw.myProgress.chapter)||undefined,page:Number(raw.myProgress.page)||undefined,percent:typeof raw.myProgress.percent==='number'?raw.myProgress.percent:undefined,status:raw.myProgress.status||undefined,format:raw.myProgress.format||undefined}:undefined,
     archiveBooks:(raw.archiveBooks||[]).map(book),archiveBookCount:Number(raw.archiveBookCount)||0,myClubRating:raw.myClubRating?{rating:Number(raw.myClubRating.rating),review:raw.myClubRating.review||undefined,recommend:raw.myClubRating.recommend===null?undefined:Boolean(raw.myClubRating.recommend)}:undefined,
-    lockedPostCount:Number(raw.lockedPostCount)||0,meetingQuestions:(raw.meetingQuestions||[]).map((question:any)=>({id:String(question.id),postId:question.post_id||undefined,body:String(question.body),createdAt:new Date(Number(question.created_at)).toISOString(),addedBy:{id:String(question.user_id),displayName:String(question.name||'Reader')}})),
+    lockedPostCount:Number(raw.lockedPostCount)||0,meetingQuestions:(raw.meetingQuestions||[]).map((question:any)=>({id:String(question.id),postId:question.post_id||undefined,body:String(question.body),createdAt:new Date(Number(question.created_at)).toISOString(),addedBy:{id:String(question.user_id),displayName:String(question.name||'Reader')}})),contextConfigured:raw.contextConfigured!==false,
   };
 }
 

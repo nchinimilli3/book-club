@@ -46,10 +46,12 @@ export function ProfilePage(){
   const[imageStatus,setImageStatus]=useState<Record<ProfileImageKind,string>>({wallpaperUrl:'',avatarUrl:''});
   const[customizeBase,setCustomizeBase]=useState<ProfileStyle|null>(null);
   const[designSaveState,setDesignSaveState]=useState<'idle'|'saving'|'saved'>('idle');
+  const[mobileLayout,setMobileLayout]=useState(()=>typeof window!=='undefined'&&window.matchMedia('(max-width: 720px)').matches);
   const[verifiedCovers,setVerifiedCovers]=useState<Set<string>>(()=>new Set());
   const[failedCovers,setFailedCovers]=useState<Set<string>>(()=>new Set());
   const coverRepairAttempts=useRef<Set<string>>(new Set());
   const coverValidationAttempts=useRef<Set<string>>(new Set());
+  useEffect(()=>{const query=window.matchMedia('(max-width: 720px)'),sync=()=>setMobileLayout(query.matches);sync();query.addEventListener?.('change',sync);return()=>query.removeEventListener?.('change',sync)},[]);
 
   async function reload(showLoading=false){
     if(!a.user){setItems([]);setLibraryLoading(false);return}
@@ -222,7 +224,7 @@ export function ProfilePage(){
   }
   function addSticker(key:string){
     const id=crypto.randomUUID?.()||Math.random().toString(36).slice(2,12);
-    setStyle(s=>{const existing=s.stickers||[],offset=(existing.length%5)-2;return {...s,stickers:[...existing,{id,key,x:50+(offset*4),y:34+((existing.length%3)*5),r:(Math.random()*8)-4,s:stickerDefaultScale(key),z:Math.max(0,...existing.map(x=>x.z||0))+1}]}})
+    setStyle(s=>{const existing=s.stickers||[],offset=(existing.length%5)-2;return {...s,stickers:[...existing,{id,key,x:50+(offset*4),y:34+((existing.length%3)*5),r:(Math.random()*8)-4,s:stickerDefaultScale(key)*(mobileLayout?.25:1),z:Math.max(0,...existing.map(x=>x.z||0))+1}]}})
   }
   async function patchBook(item:LibraryItem,patch:{shelf?:string;rating?:number|null;dateFinished?:string|null;isFavorite?:boolean;isPublic?:boolean},label='Change'){
     if(!a.user)return false;

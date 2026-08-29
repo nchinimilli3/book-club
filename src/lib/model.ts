@@ -36,6 +36,7 @@ export type Workspace = {
   myClubRating?:ClubRating;
   lockedPostCount:number;
   meetingQuestions:MeetingQuestion[];
+  contextConfigured?:boolean;
 };
 
 export type AppNotification = { id:string; clubId?:string; type:string; title:string; body?:string; deepLink?:string; readAt?:string; createdAt:string; bookCoverUrl?:string };
