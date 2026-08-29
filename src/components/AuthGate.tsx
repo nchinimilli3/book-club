@@ -99,6 +99,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaNonce, setCaptchaNonce] = useState(0);
 
   useEffect(() => {
     if (cloudBackend) {
@@ -140,7 +141,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         await authPost('/api/auth/sign-up/email', { name: displayName.trim(), email: email.trim(), password, callbackURL: window.location.origin }, captchaToken);
         const next = await cloudApi.session();
         setLoading(false);
-        if (next.user) setSession({ user: next.user }); else setMode('check-email');
+        if (next.user) setSession({ user: next.user }); else { setCaptchaToken(''); setCaptchaNonce(value => value + 1); setMode('check-email'); }
       } catch (e) { setLoading(false); setError(e instanceof Error ? e.message : 'Could not create your account.'); }
       return;
     }
@@ -181,6 +182,24 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     });
     setLoading(false);
     if (signInError) setError(signInError.message);
+  }
+
+  async function resendVerification() {
+    setError('');
+    setMessage('');
+    if (!email.trim()) return setError('Enter your email first.');
+    if (turnstileSiteKey && !captchaToken) return setError('Complete the security check, then try again.');
+    setLoading(true);
+    try {
+      await authPost('/api/auth/send-verification-email', { email: email.trim(), callbackURL: window.location.origin }, captchaToken);
+      setMessage('A fresh verification link is on its way.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not resend the verification email.');
+    } finally {
+      setLoading(false);
+      setCaptchaToken('');
+      setCaptchaNonce(value => value + 1);
+    }
   }
 
   async function continueWithGoogle() {
@@ -368,7 +387,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             <h1>Check your inbox.</h1>
             <p className="auth-confirmation-copy">We sent a confirmation link to <strong className="auth-email-address">{email}</strong>.</p>
             <p className="auth-confirmation-detail">Open the link to activate your account, then come back to sign in.</p>
-            <button className="primary auth-primary auth-confirmation-action" onClick={() => setMode('signin')}>Back to sign in</button>
+            <TurnstileWidget key={captchaNonce} onToken={setCaptchaToken} />
+            {error && <p className="auth-error">{error}</p>}
+            {message && <p className="auth-success">{message}</p>}
+            <div className="auth-confirmation-actions">
+              <button className="primary auth-primary auth-confirmation-action" onClick={() => setMode('signin')}>Back to sign in</button>
+              <button className="auth-confirmation-resend" type="button" onClick={resendVerification} disabled={loading}>{loading ? 'Sending…' : 'Resend verification email'}</button>
+            </div>
           </div>
         )}
       </section>
