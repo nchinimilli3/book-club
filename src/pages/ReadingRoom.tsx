@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { ArrowLeft, CalendarDays, CalendarPlus, Camera, Check, ChevronRight, Clock3, Download, FileText, Heart, LockKeyhole, MessageCircle, Minus, Plus, Quote, Search, Share2, StickyNote, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CalendarPlus, Camera, Check, ChevronRight, Clock3, Download, Heart, LockKeyhole, MessageCircle, Minus, Plus, Quote, Search, Share2, StickyNote, Trash2, Upload } from 'lucide-react';
 import { useRouter } from '../lib/router';
 import { useApp } from '../lib/AppContext';
-import { createReply, createThought, deleteMargin, getBookContext, getMargins, removeMeetingQuestion, saveMeetingOptions, saveMeetingQuestion, savePrivateNote, saveQuote, setMeetingOptionResponse, submitMeetingPoll, toggleReaction, updateProgress } from '../lib/data';
+import { createReply, createThought, deleteMargin, getBookContext, getMargins, removeMeetingQuestion, saveMeetingOptions, saveMeetingQuestion, savePrivateNote, saveQuote, setMeetingOptionResponse, submitMeetingPoll, toggleReaction, updateProgress } from '@book-club/data';
 import { beginCalendarConnect, getCalendarStatus, getReaderContext, removeReadingPlanFromCalendar, syncReadingPlanToCalendar, transcribePassage } from '../lib/api';
 import { Modal } from '../components/Modal';
 import { BookCover } from '../components/BookCover';
@@ -158,7 +158,7 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
   }
   async function reply(postId:string){if(!replyBody.trim())return;setPosting(true);setPostError('');try{await createReply(postId,replyBody);setReplyBody('');setReplyingTo(null);await a.refresh()}catch(err:any){setPostError(err?.message||'Could not post reply.')}finally{setPosting(false)}}
   async function react(postId:string){
-    const source=w.thoughts.find(t=>t.id===postId);const hearts=(source?.reactions||[]).filter(r=>r.reaction==='heart');const current=reactionOverrides[postId]||{mine:hearts.some(r=>r.userId===a.user?.id),count:hearts.length};const next={mine:!current.mine,count:Math.max(0,current.count+(current.mine?-1:1))};
+    const source=w?.thoughts.find(t=>t.id===postId);const hearts=(source?.reactions||[]).filter(r=>r.reaction==='heart');const current=reactionOverrides[postId]||{mine:hearts.some(r=>r.userId===a.user?.id),count:hearts.length};const next={mine:!current.mine,count:Math.max(0,current.count+(current.mine?-1:1))};
     setReactionOverrides(v=>({...v,[postId]:next}));
     try{await toggleReaction(postId,'heart');await a.refresh();setReactionOverrides(v=>{const copy={...v};delete copy[postId];return copy})}catch(err:any){setReactionOverrides(v=>({...v,[postId]:current}));setPostError(err?.message||'Could not save reaction.')}
   }
@@ -244,14 +244,21 @@ export function ReadingRoom({clubId,clubBookId}:{clubId:string;clubBookId:string
     }
   }
   async function toggleCheckpointVote(optionId:string,available:boolean){
+    if(voteBusy||pendingCheckpointOptionIds.has(optionId))return;
     setPendingCheckpointOptionIds(prev=>new Set(prev).add(optionId));
     try{
+      const checkpoint=Array.from(meetingOptionsByCheckpoint.values()).flat().find(option=>option.id===optionId);
       await setMeetingOptionResponse(optionId,available);
-      await a.refresh();
-      setNotice(available?'Your time vote was saved.':'Your time vote was removed.');
-      const checkpoint=Array.from(meetingOptionsByCheckpoint.values()).flat().filter(option=>option.id===optionId)[0];
       const checkpointOptions=checkpoint?meetingOptionsByCheckpoint.get(checkpoint.checkpointId||'')||[]:[];
-      if(available&&checkpointOptions.length>0&&((w?.members.length||0)===1||checkpointOptions.every(option=>option.id===optionId||option.myAvailable))) await submitCheckpointVote(checkpoint.checkpointId||'');
+      const singleMember=Boolean(w?.members.length===1);
+      if(available&&checkpoint?.checkpointId&&singleMember){
+        setNotice('Confirming your meeting time…');
+        await submitCheckpointVote(checkpoint.checkpointId);
+      }else{
+        setNotice(available?'Your time vote was saved.':'Your time vote was removed.');
+        if(available&&checkpointOptions.length>0&&checkpointOptions.every(option=>option.id===optionId||option.myAvailable)) await submitCheckpointVote(checkpoint?.checkpointId||'');
+      }
+      await a.refresh();
     }catch(err:any){
       setNotice(err?.message||'Could not save your vote.');
     }finally{setPendingCheckpointOptionIds(prev=>{const next=new Set(prev);next.delete(optionId);return next})}
