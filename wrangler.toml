@@ -2,6 +2,10 @@ name = "book-club"
 pages_build_output_dir = "dist"
 compatibility_date = "2026-08-01"
 
+[vars]
+VITE_BACKEND = "d1"
+VITE_API_BASE_URL = "https://book-club-api-next.postgradplans.workers.dev"
+
 # Production frontend requests use /api/* on the Pages origin. Pages Functions
 # forwards those requests to the separately deployed book-club-api Worker.
 [[services]]
