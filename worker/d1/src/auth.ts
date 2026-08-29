@@ -3,6 +3,23 @@ import { captcha } from 'better-auth/plugins';
 import type { Env } from './env';
 import { required } from './env';
 
+type MailjetError = { ErrorMessage?: unknown; ErrorInfo?: unknown; ErrorCode?: unknown; ErrorIdentifier?: unknown };
+type MailjetResponse = { Messages?: Array<{ Status?: unknown; Errors?: MailjetError[] }>; ErrorMessage?: unknown; ErrorInfo?: unknown };
+
+function safeProviderMessage(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  return value.replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[email]').replace(/https?:\/\/\S+/gi, '[link]').slice(0, 240);
+}
+
+function mailjetMessage(payload: MailjetResponse | null): string {
+  const firstError = payload?.Messages?.[0]?.Errors?.[0];
+  return safeProviderMessage(firstError?.ErrorMessage)
+    || safeProviderMessage(firstError?.ErrorInfo)
+    || safeProviderMessage(payload?.ErrorMessage)
+    || safeProviderMessage(payload?.ErrorInfo)
+    || 'Mailjet rejected the email request.';
+}
+
 async function sendEmail(env: Env, to: string, subject: string, html: string): Promise<void> {
   if (env.AUTH_EMAIL_MODE === 'console') {
     console.log(JSON.stringify({ event: 'local_email', to, subject, html }));
@@ -41,7 +58,12 @@ async function sendEmail(env: Env, to: string, subject: string, html: string): P
       throw error;
     }
     const responseText = await response.text();
-    if (!response.ok) {
+    let payload: MailjetResponse | null = null;
+    try { payload = JSON.parse(responseText) as MailjetResponse; } catch { /* Mailjet may return a non-JSON proxy error. */ }
+    const messageStatus = typeof payload?.Messages?.[0]?.Status === 'string' ? payload.Messages[0].Status.toLowerCase() : '';
+    const messageErrors = payload?.Messages?.[0]?.Errors || [];
+    const messageAccepted = response.ok && messageStatus === 'success' && messageErrors.length === 0;
+    if (!messageAccepted) {
       const normalized = responseText.toLowerCase();
       const category = response.status === 401 || response.status === 403
         ? 'invalid_credentials'
@@ -53,17 +75,9 @@ async function sendEmail(env: Env, to: string, subject: string, html: string): P
               ? 'sender_not_approved'
               : 'request_rejected';
       console.error(JSON.stringify({ event: 'email_provider_error', provider: 'mailjet', status: response.status, category }));
-      let providerMessage = 'Mailjet rejected the email request.';
-      try {
-        const payload = JSON.parse(responseText) as { ErrorMessage?: unknown; ErrorInfo?: unknown };
-        const message = typeof payload.ErrorMessage === 'string' ? payload.ErrorMessage : typeof payload.ErrorInfo === 'string' ? payload.ErrorInfo : '';
-        if (message) providerMessage = message.replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[email]').replace(/https?:\/\/\S+/gi, '[link]').slice(0, 240);
-      } catch {
-        // Keep the generic safe message when Mailjet returns a non-JSON response.
-      }
-      throw new Error(`Mailjet email delivery failed (${response.status}): ${providerMessage}`);
+      throw new Error(`Mailjet email delivery failed (${response.status}): ${mailjetMessage(payload)}`);
     }
-    console.log(JSON.stringify({ event: 'email_provider_accepted', provider: 'mailjet', status: response.status }));
+    console.log(JSON.stringify({ event: 'email_provider_accepted', provider: 'mailjet', status: response.status, messageStatus }));
     return;
   }
   const response = await fetch('https://api.resend.com/emails', {
