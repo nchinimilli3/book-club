@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, MailCheck } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from '@book-club/supabase';
 import { BootScreen } from './BootScreen';
 import { cloudApi } from '../lib/cloudApi';
@@ -363,10 +363,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
         {mode === 'check-email' && (
           <div className="auth-check-email">
-            <p className="auth-kicker">One quick thing</p>
+            <div className="auth-confirmation-icon" aria-hidden="true"><MailCheck size={25} strokeWidth={1.8} /></div>
+            <p className="auth-kicker">Verification email sent</p>
             <h1>Check your inbox.</h1>
-            <p>We sent a confirmation link to <strong>{email}</strong>. Open it, then BOOK CLUB will bring you back here signed in.</p>
-            <button className="auth-secondary" onClick={() => setMode('signin')}>Back to sign in</button>
+            <p className="auth-confirmation-copy">We sent a confirmation link to <strong className="auth-email-address">{email}</strong>.</p>
+            <p className="auth-confirmation-detail">Open the link to activate your account, then come back to sign in.</p>
+            <button className="primary auth-primary auth-confirmation-action" onClick={() => setMode('signin')}>Back to sign in</button>
           </div>
         )}
       </section>
