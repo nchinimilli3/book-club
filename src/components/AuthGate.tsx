@@ -209,18 +209,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       // This must be a top-level navigation, rather than a cross-origin fetch.
       // Safari can reject the short-lived OAuth state cookie set by a background
       // request to the Worker, which makes Google's callback fail state checks.
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action = `${authBase()}/api/auth/sign-in/social`;
-      for (const [name, value] of Object.entries({ provider: 'google', callbackURL: window.location.origin })) {
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = name;
-        input.value = value;
-        form.appendChild(input);
-      }
-      document.body.appendChild(form);
-      form.submit();
+      window.location.assign(`${authBase()}/api/auth/google/start`);
       return;
     }
     if (!supabase) { setLoading(false); return; }
