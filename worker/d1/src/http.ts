@@ -20,7 +20,7 @@ export function cors(request: Request, env: Env): HeadersInit {
   const origin = request.headers.get('origin');
   const allowed = allowedOrigins(env);
   if (origin && !allowed.includes(origin)) return {};
-  return { 'access-control-allow-origin': origin || env.APP_ORIGIN, 'access-control-allow-credentials': 'true', 'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS', 'access-control-allow-headers': 'content-type,idempotency-key', vary: 'Origin' };
+  return { 'access-control-allow-origin': origin || env.APP_ORIGIN, 'access-control-allow-credentials': 'true', 'access-control-allow-methods': 'GET,POST,PUT,DELETE,OPTIONS', 'access-control-allow-headers': 'content-type,idempotency-key,x-captcha-response', vary: 'Origin' };
 }
 
 export function withCors(response: Response, request: Request, env: Env): Response {
