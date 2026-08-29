@@ -1,6 +1,6 @@
 # BOOK CLUB production backend contract
 
-`supabase/migrations/009_FINAL_RELEASE.sql` is the base release contract and `supabase/migrations/012_launch_remaining_five.sql` is the launch extension for the final five production fixes. Older numbered migrations are historical/context only; do not compose a new production database by guessing from them. For the existing project, apply 009 and then 012, then run both `book_club_release_check()` and `book_club_launch_012_check()` as release gates.
+`supabase/migrations/009_FINAL_RELEASE.sql` is the base release contract and `supabase/migrations/012_launch_remaining_five.sql` is the launch extension for the final five production fixes. Apply later numbered migrations in order, including `021_low_egress_realtime_scope.sql`; it adds direct club scope keys used by the production realtime filters and versioned club-header storage. Older numbered migrations are historical/context only; do not compose a new production database by guessing from them. For the existing project, apply 009 and then each subsequent migration in order, then run both `book_club_release_check()` and `book_club_launch_012_check()` as release gates.
 
 ## Private product tables
 
@@ -8,7 +8,7 @@
 - `user_preferences` — active club, notification mode, recommendation mood/avoidances, and browser-detected IANA timezone
 - `clubs`, `club_members`, `club_invites` — private club identity, membership, revocable/expiring invites
 - `books`, `club_books` — catalog records + per-club lifecycle/idea attribution
-- `ballots`, `nominations`, `votes`, `ballot_preferences` — private voting with broad-support preferences plus legacy single-choice compatibility
+- `ballots`, `nominations`, `votes`, `ballot_preferences`, `ballot_rankings` — legacy broad-support voting plus sealed ranked-choice ballots
 - `book_checkins` — acquisition / reading format
 - `reading_progress`, `reading_checkpoints`, `checkpoint_checkins` — spoiler boundary, suggested plan, and persisted meeting checkpoint check-ins
 - `posts`, `replies`, `reactions` — spoiler-aware async discussion
@@ -28,10 +28,12 @@
 - `create_club(text,text,text)`
 - `join_club_by_invite(text)`
 - `create_or_get_club_invite(uuid)`
-- `start_ballot_from_ideas(uuid)` (compatibility wrapper)
-- `start_ballot_from_ideas(uuid,timestamptz)` (launch UI deadline-aware form)
+- `start_ballot_from_ideas(uuid,timestamptz)` (ranked-choice launch UI deadline-aware form)
 - `cast_ballot_vote(uuid)`
 - `set_ballot_preference(uuid,text)`
+- `set_ballot_ranking(uuid,uuid[])`
+- `get_my_ballot_ranking(uuid)`
+- `add_club_idea(uuid,uuid)`
 - `remove_club_idea(uuid)`
 - `finalize_ballot(uuid)`
 - `decide_tied_ballot(uuid,uuid)`
@@ -74,9 +76,8 @@ All club/social tables have RLS. `anon` is explicitly revoked from private CRUD 
 
 ## Realtime
 
-Production realtime publication includes posts, replies, reactions, reading progress, checkpoint check-ins, meeting RSVPs, meetings, meeting options, meeting availability, meeting agenda items, club books, ratings, ballots, ballot preferences and notifications.
+Production realtime publication includes posts, replies, reactions, reading progress, checkpoint check-ins, meeting RSVPs, meetings, meeting options, meeting availability, meeting agenda items, club books, ratings, ballots, ballot preferences, ballot rankings and notifications. Client listeners must always use active club/book/user filters; global table subscriptions are forbidden.
 
 ## Release gate
 
 After applying `009_FINAL_RELEASE.sql` and `012_launch_remaining_five.sql`, **every row returned by both `book_club_release_check()` and `book_club_launch_012_check()` must say `PASS`** before inviting real users. A FAIL is a release blocker, not something the frontend should silently fall back around.
-
