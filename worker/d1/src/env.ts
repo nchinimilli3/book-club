@@ -9,7 +9,11 @@ export interface Env {
   GOOGLE_CLIENT_SECRET: string;
   RESEND_API_KEY: string;
   RESEND_FROM: string;
-  AUTH_EMAIL_MODE?: 'resend' | 'console';
+  MAILJET_API_KEY?: string;
+  MAILJET_SECRET_KEY?: string;
+  MAILJET_FROM_EMAIL?: string;
+  MAILJET_FROM_NAME?: string;
+  AUTH_EMAIL_MODE?: 'mailjet' | 'resend' | 'console';
   TURNSTILE_SECRET_KEY: string;
   R2_MAX_STORAGE_BYTES?: string;
   OPENAI_API_KEY?: string;

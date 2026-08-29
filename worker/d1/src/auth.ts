@@ -8,6 +8,27 @@ async function sendEmail(env: Env, to: string, subject: string, html: string): P
     console.log(JSON.stringify({ event: 'local_email', to, subject, html }));
     return;
   }
+  if (env.AUTH_EMAIL_MODE === 'mailjet') {
+    const apiKey = required(env, 'MAILJET_API_KEY');
+    const secretKey = required(env, 'MAILJET_SECRET_KEY');
+    const response = await fetch('https://api.mailjet.com/v3.1/send', {
+      method: 'POST',
+      headers: {
+        authorization: `Basic ${btoa(`${apiKey}:${secretKey}`)}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        Messages: [{
+          From: { Email: required(env, 'MAILJET_FROM_EMAIL'), Name: env.MAILJET_FROM_NAME || 'BOOK CLUB' },
+          To: [{ Email: to }],
+          Subject: subject,
+          HTMLPart: html,
+        }],
+      }),
+    });
+    if (!response.ok) throw new Error(`Mailjet email delivery failed (${response.status}).`);
+    return;
+  }
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { authorization: `Bearer ${required(env, 'RESEND_API_KEY')}`, 'content-type': 'application/json' },
