@@ -9,6 +9,19 @@ export class CloudApiError extends Error {
 
 const CLOUD_API_BASE = String(import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
+/** Resolve media references returned by the API against the same API origin.
+ * Profile and club media are authenticated routes, so leaving a relative
+ * reference unresolved can send an image request to the Pages host instead
+ * of the configured Worker when the API is deployed separately.
+ */
+export function cloudAssetUrl(value?: string | null): string | undefined {
+  const raw = String(value || '').trim();
+  if (!raw) return undefined;
+  if (/^(?:data|blob|https?):/i.test(raw)) return raw;
+  try { return new URL(raw, CLOUD_API_BASE || window.location.origin).toString(); }
+  catch { return raw; }
+}
+
 export type CloudClub = { id: string; name: string; description: string; cover_key?: string | null; role: 'owner' | 'admin' | 'member' };
 
 export async function cloudRequest<T>(path: string, init: RequestInit = {}): Promise<T> {

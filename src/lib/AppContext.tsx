@@ -4,7 +4,7 @@ import { getMyClubs, getProfile, getWorkspace, getUnreadNotificationCount, setAc
 import type { Club, Profile, Workspace, ProfileStyle } from './model';
 import { readProfileStyleCache } from './profileStyleCache';
 import { captureClientError } from './telemetry';
-import { cloudApi } from './cloudApi';
+import { cloudApi, cloudAssetUrl } from './cloudApi';
 
 const cloudBackend = import.meta.env.VITE_BACKEND === 'd1';
 type User = { id: string; email?: string; user_metadata?: { display_name?: string } };
@@ -18,12 +18,12 @@ function cloudWorkspace(raw:any, club:Club):Workspace {
     : (raw.books || []).some((item:any) => item.status === 'ballot') ? 'choosing' : 'setup';
   return {
     club:{...club,ownerId:String(raw.club?.created_by||club.ownerId),phase,coverImageUrl:raw.club?.cover_key||club.coverImageUrl,memberCount:Array.isArray(raw.members)?raw.members.length:club.memberCount},
-    members:(raw.members||[]).map((member:any)=>({id:String(member.user_id),displayName:String(member.name||'Reader'),username:member.username||undefined,avatarUrl:member.image||member.style?.avatarUrl||undefined,style:member.style||undefined,role:String(member.role||'member'),chapter:Number(member.chapter)||undefined,page:Number(member.page)||undefined,percent:typeof member.percent==='number'?member.percent:undefined,status:member.format?'acquired':member.status||undefined,format:member.format||undefined})),
+    members:(raw.members||[]).map((member:any)=>({id:String(member.user_id),displayName:String(member.name||'Reader'),username:member.username||undefined,avatarUrl:cloudAssetUrl(member.image||member.style?.avatarUrl),style:member.style||undefined,role:String(member.role||'member'),chapter:Number(member.chapter)||undefined,page:Number(member.page)||undefined,percent:typeof member.percent==='number'?member.percent:undefined,status:member.format?'acquired':member.status||undefined,format:member.format||undefined})),
     currentBook:current,
     ideaBooks:(raw.books||[]).filter((item:any)=>item.status==='suggested'||item.status==='ballot').map(clubBook),
     meeting:(raw.meetings||[]).find((item:any)=>item.book_id===current?.id)?.id?(()=>{const item=(raw.meetings||[]).find((entry:any)=>entry.book_id===current?.id);return {id:String(item.id),startsAt:new Date(Number(item.starts_at)).toISOString(),checkpointId:item.checkpoint_id||undefined,meetingType:item.meeting_type||undefined,meetingUrl:item.meeting_url||undefined,response:item.my_rsvp==='yes'?'going':item.my_rsvp==='no'?'cant':item.my_rsvp||undefined,status:item.status||undefined}})():undefined,
     meetingOptions:(raw.meetingOptions||[]).map((option:any)=>({id:String(option.id),checkpointId:option.checkpoint_id||undefined,startsAt:new Date(Number(option.starts_at)).toISOString(),availableCount:Number(option.available_count)||0,myAvailable:Boolean(option.my_available)})),
-    thoughts:(raw.thoughts||[]).map((thought:any)=>({id:String(thought.id),userId:String(thought.author_id),body:String(thought.body),type:String(thought.post_type||'thought'),chapter:Number(thought.chapter)||undefined,createdAt:new Date(Number(thought.created_at)).toISOString(),author:{id:String(thought.author_id),displayName:String(thought.name||'Reader'),avatarUrl:thought.image||undefined},reactions:(raw.reactions||[]).filter((reaction:any)=>reaction.post_id===thought.id).map((reaction:any)=>({postId:String(reaction.post_id),userId:String(reaction.user_id),reaction:String(reaction.emoji),createdAt:new Date(Number(reaction.created_at)).toISOString()})),replyItems:(raw.replies||[]).filter((reply:any)=>reply.post_id===thought.id).map((reply:any)=>({id:String(reply.id),postId:String(reply.post_id),userId:String(reply.author_id),body:String(reply.body),createdAt:new Date(Number(reply.created_at)).toISOString(),author:{id:String(reply.author_id),displayName:String(reply.name||'Reader'),avatarUrl:reply.image||undefined}})),predictionRevealed:Boolean(thought.revealed_at)})),
+    thoughts:(raw.thoughts||[]).map((thought:any)=>({id:String(thought.id),userId:String(thought.author_id),body:String(thought.body),type:String(thought.post_type||'thought'),chapter:Number(thought.chapter)||undefined,createdAt:new Date(Number(thought.created_at)).toISOString(),author:{id:String(thought.author_id),displayName:String(thought.name||'Reader'),avatarUrl:cloudAssetUrl(thought.image)},reactions:(raw.reactions||[]).filter((reaction:any)=>reaction.post_id===thought.id).map((reaction:any)=>({postId:String(reaction.post_id),userId:String(reaction.user_id),reaction:String(reaction.emoji),createdAt:new Date(Number(reaction.created_at)).toISOString()})),replyItems:(raw.replies||[]).filter((reply:any)=>reply.post_id===thought.id).map((reply:any)=>({id:String(reply.id),postId:String(reply.post_id),userId:String(reply.author_id),body:String(reply.body),createdAt:new Date(Number(reply.created_at)).toISOString(),author:{id:String(reply.author_id),displayName:String(reply.name||'Reader'),avatarUrl:cloudAssetUrl(reply.image)}})),predictionRevealed:Boolean(thought.revealed_at)})),
     checkpoints:(raw.checkpoints||[]).filter((checkpoint:any)=>!current||checkpoint.book_id===current.id).map((checkpoint:any)=>({id:String(checkpoint.id),dueAt:String(checkpoint.due_at),targetChapter:Number(checkpoint.target_chapter)||undefined,targetPage:Number(checkpoint.target_page)||undefined,label:checkpoint.label||undefined})),
     checkpointCheckins:(raw.checkpointCheckins||[]).map((checkin:any)=>({checkpointId:String(checkin.checkpoint_id),userId:String(checkin.user_id),status:checkin.status,updatedAt:new Date(Number(checkin.updated_at)).toISOString()})),
     acquired:Number(raw.acquired)||0,myProgress:raw.myProgress?{chapter:Number(raw.myProgress.chapter)||undefined,page:Number(raw.myProgress.page)||undefined,percent:typeof raw.myProgress.percent==='number'?raw.myProgress.percent:undefined,status:raw.myProgress.status||undefined,format:raw.myProgress.format||undefined}:undefined,
@@ -39,7 +39,8 @@ async function hydrateCloudWorkspace(raw: any, club: Club): Promise<Workspace> {
   const cached = headerUrlCache.get(String(key));
   if (cached && cached.expiresAt > Date.now() + 60_000) { workspace.club.coverImageUrl = cached.url; return workspace; }
   try {
-    const result = await cloudApi.headerUrl(club.id); const url = result.url;
+    const result = await cloudApi.headerUrl(club.id); const url = cloudAssetUrl(result.url);
+    if (!url) throw new Error('Club header URL was empty.');
     headerUrlCache.set(String(key), { url, expiresAt: Date.now() + 14 * 60_000 }); workspace.club.coverImageUrl = url;
   } catch { workspace.club.coverImageUrl = undefined; }
   return workspace;
@@ -104,7 +105,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const [result, settingsResult, notificationsResult] = await withTimeout(Promise.all([cloudApi.clubs(), cloudApi.settings(), cloudApi.notifications()]), 20000) as any;
         const mapped = result.clubs.map((club: any, index: number) => ({ id: club.id, name: club.name, ownerId: '', tone: (['rose','olive','gold','plum','blue','clay'] as const)[index % 6], phase: 'setup' as const, coverImageUrl: club.cover_key || undefined, memberCount: 1 }));
         const settings = settingsResult.settings || {};
-        const freshProfile = { id: u.id, displayName: settingsResult.user?.name || u.name, username: settings.username || undefined, avatarUrl: settingsResult.user?.image || settings.style?.avatarUrl || undefined, style: settings.style || undefined };
+        const freshProfile = { id: u.id, displayName: settingsResult.user?.name || u.name, username: settings.username || undefined, avatarUrl: cloudAssetUrl(settingsResult.user?.image || settings.style?.avatarUrl), style: settings.style || undefined };
         const cachedStyle = readProfileStyleCache(u.id);
         setProfile(cachedStyle?.pending ? { ...freshProfile, style: cachedStyle.style } : freshProfile);
         setUnreadNotifications((notificationsResult.notifications || []).filter((item:any) => !item.read_at).length);

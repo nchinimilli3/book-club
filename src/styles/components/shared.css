@@ -52,3 +52,4 @@
   border-radius:inherit;
   display:block;
 }
+.avatar-fallback{display:grid;place-items:center;width:100%;height:100%;font-weight:800;line-height:1;text-transform:uppercase}

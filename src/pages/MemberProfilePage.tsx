@@ -4,6 +4,7 @@ import { BookCover } from '../components/BookCover';
 import { getSharedMemberProfile } from '@book-club/data';
 import { useApp } from '../lib/AppContext';
 import { useRouter } from '../lib/router';
+import { Avatar } from '../components/SafeImage';
 
 export function MemberProfilePage({clubId,memberId}:{clubId:string;memberId:string}){
   const a=useApp(),{navigate}=useRouter();
@@ -23,7 +24,7 @@ export function MemberProfilePage({clubId,memberId}:{clubId:string;memberId:stri
   return <div className="page member-profile-page">
     <button className="back-link" onClick={()=>navigate(`/clubs/${clubId}`)}><ArrowLeft/> {a.workspace?.club.name||'Club'}</button>
     <section className="member-profile-hero">
-      <div className="member-profile-avatar">{p.avatarUrl?<img src={p.avatarUrl} alt=""/>:<span>{p.displayName?.slice(0,1)||'R'}</span>}</div>
+      <div className="member-profile-avatar"><Avatar src={p.avatarUrl} name={p.displayName}/></div>
       <div><p>{p.username?`@${p.username}`:'Club member'}</p><h1>{p.displayName||'Reader'}</h1><span>{books.length} shared {books.length===1?'book':'books'}</span></div>
     </section>
     {sections.map(([title,items])=>items.length>0&&<section className="member-shelf" key={title}><header><h2>{title}</h2><span>{items.length}</span></header><div>{items.map((x:any)=><button key={x.id} onClick={()=>openBook(x)}><BookCover title={x.book.title} author={x.book.author} src={x.book.coverUrl}/><span><b>{x.book.title}</b><small>{x.book.author}</small>{x.isFavorite&&<em><Heart fill="currentColor"/> Favorite</em>}</span></button>)}</div></section>)}

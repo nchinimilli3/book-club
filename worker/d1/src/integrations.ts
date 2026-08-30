@@ -103,13 +103,62 @@ export async function transcribePassage(request: Request, env: Env, session: Aut
   return json({ text, confidence: text ? 0.8 : 0, needsReview: true });
 }
 
+function coverUrl(value: unknown): string {
+  try {
+    const url = new URL(String(value || ''));
+    if (url.protocol !== 'https:') return '';
+    const path = `${url.hostname}${url.pathname}`.toLowerCase();
+    if (/(placeholder|no[-_ ]?cover|default[-_ ]?cover|nocover|image-not-found)/.test(path)) return '';
+    return url.toString();
+  } catch { return ''; }
+}
+
+async function googleCover(title: string, author: string, isbn: string): Promise<string> {
+  try {
+    const query = new URL('https://www.googleapis.com/books/v1/volumes');
+    query.searchParams.set('q', isbn ? `isbn:${isbn}` : `intitle:${title}${author ? ` inauthor:${author}` : ''}`);
+    query.searchParams.set('maxResults', '10'); query.searchParams.set('printType', 'books');
+    const response = await fetch(query); if (!response.ok) return '';
+    const payload = await response.json().catch(() => ({})) as { items?: Array<{ volumeInfo?: { title?: string; authors?: string[]; imageLinks?: Record<string, string> } }> };
+    const normalizedTitle = title.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const normalizedAuthor = author.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const hit = (payload.items || []).find(item => {
+      const info = item.volumeInfo || {};
+      const candidateTitle = String(info.title || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+      const candidateAuthor = (info.authors || []).join(' ').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+      return candidateTitle === normalizedTitle && (!normalizedAuthor || candidateAuthor.includes(normalizedAuthor) || normalizedAuthor.includes(candidateAuthor));
+    }) || payload.items?.[0];
+    const links = hit?.volumeInfo?.imageLinks || {};
+    const raw = links.extraLarge || links.large || links.medium || links.thumbnail || links.smallThumbnail;
+    return coverUrl(String(raw || '').replace(/^http:\/\//i, 'https://'));
+  } catch { return ''; }
+}
+
+async function openLibraryCover(title: string, author: string, isbn: string): Promise<string> {
+  try {
+    const query = new URL('https://openlibrary.org/search.json');
+    if (isbn) query.searchParams.set('isbn', isbn); else { query.searchParams.set('title', title); if (author) query.searchParams.set('author', author); }
+    query.searchParams.set('limit', '10'); query.searchParams.set('fields', 'title,author_name,cover_i,isbn');
+    const response = await fetch(query); if (!response.ok) return '';
+    const payload = await response.json().catch(() => ({})) as { docs?: Array<{ title?: string; author_name?: string[]; cover_i?: number; isbn?: string[] }> };
+    const normalizedTitle = title.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const normalizedAuthor = author.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const hit = (payload.docs || []).find(doc => {
+      const candidateTitle = String(doc.title || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+      const candidateAuthor = (doc.author_name || []).join(' ').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+      return Boolean(doc.cover_i) && candidateTitle === normalizedTitle && (!normalizedAuthor || candidateAuthor.includes(normalizedAuthor) || normalizedAuthor.includes(candidateAuthor));
+    }) || (payload.docs || []).find(doc => doc.cover_i);
+    return hit?.cover_i ? coverUrl(`https://covers.openlibrary.org/b/id/${hit.cover_i}-L.jpg?default=false`) : '';
+  } catch { return ''; }
+}
+
 export async function resolveCover(request: Request, _env: Env, session: AuthSession | null): Promise<Response> {
-  requireSession(session); const input = await body<{ title?: unknown; author?: unknown; isbn?: unknown; currentCover?: unknown }>(request); const title = string(input.title, 'Book title', { min: 1, max: 240 }); const author = typeof input.author === 'string' ? input.author.trim().slice(0, 240) : '';
-  if (typeof input.currentCover === 'string' && /^https:\/\//i.test(input.currentCover)) return json({ url: input.currentCover, source: 'existing', preserved: true });
-  const query = new URL('https://openlibrary.org/search.json'); query.searchParams.set('title', title); if (author) query.searchParams.set('author', author); if (typeof input.isbn === 'string') query.searchParams.set('isbn', input.isbn); query.searchParams.set('limit', '1');
-  const response = await fetch(query); const payload = await response.json().catch(() => ({})) as { docs?: Array<{ cover_i?: number; isbn?: string[] }> }; const doc = payload.docs?.[0]; const isbn = doc?.isbn?.[0] || (typeof input.isbn === 'string' ? input.isbn : '');
-  const url = isbn ? `https://covers.openlibrary.org/b/isbn/${encodeURIComponent(isbn)}-L.jpg?default=false` : doc?.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg?default=false` : '';
-  return json({ url, source: url ? 'open_library' : 'none' });
+  requireSession(session); const input = await body<{ title?: unknown; author?: unknown; isbn?: unknown; currentCover?: unknown }>(request); const title = string(input.title, 'Book title', { min: 1, max: 240 }); const author = typeof input.author === 'string' ? input.author.trim().slice(0, 240) : ''; const isbn = typeof input.isbn === 'string' ? input.isbn.replace(/[^0-9X]/gi, '') : '';
+  const existing = coverUrl(input.currentCover);
+  if (existing) return json({ url: existing, source: 'existing', preserved: true });
+  const google = await googleCover(title, author, isbn); if (google) return json({ url: google, source: 'google_books' });
+  const openLibrary = await openLibraryCover(title, author, isbn); if (openLibrary) return json({ url: openLibrary, source: 'open_library' });
+  return json({ url: '', source: 'none' });
 }
 
 export async function enrichBook(request: Request, _env: Env, session: AuthSession | null): Promise<Response> {

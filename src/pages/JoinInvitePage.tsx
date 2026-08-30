@@ -5,6 +5,7 @@ import { useApp } from '../lib/AppContext';
 import { joinClub, previewClubInvite } from '@book-club/data';
 import { useRouter } from '../lib/router';
 import { FeedbackMessage } from '../components/PageState';
+import { Avatar } from '../components/SafeImage';
 
 export function JoinInvitePage({code}:{code:string}){
   const a=useApp(),{navigate}=useRouter();
@@ -27,7 +28,7 @@ export function JoinInvitePage({code}:{code:string}){
     <div className="join-private"><Users/> Private club · {preview.memberCount||members.length} members</div>
     <h1>{preview.name}</h1>
     <p className="join-lede">You were invited to read with this group.</p>
-    {members.length>0&&<div className="join-members">{members.map((m:any,i:number)=><span key={`${m.name}-${i}`}>{m.avatarUrl?<img src={m.avatarUrl} alt=""/>:<i>{String(m.name||'R').slice(0,1)}</i>}<b>{m.name}</b></span>)}</div>}
+    {members.length>0&&<div className="join-members">{members.map((m:any,i:number)=><span key={`${m.name}-${i}`}><Avatar src={m.avatarUrl} name={m.name}/><b>{m.name}</b></span>)}</div>}
     {books.length>0&&<div className="join-books"><small>Currently choosing</small><div>{books.map((x:any)=><BookCover key={x.id||x.title} title={x.title} author={x.author} src={x.coverUrl}/>)}</div></div>}
     <button className="primary join-button" type="button" disabled={busy} onClick={join}>{busy?'Joining…':`Join ${preview.name}`} <ArrowRight/></button>
     {error&&<FeedbackMessage kind="error">{error}</FeedbackMessage>}

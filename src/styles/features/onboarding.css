@@ -190,3 +190,5 @@
     min-height: 50px;
   }
 }
+/* A failed custom club header keeps the onboarding surface legible. */
+.new-club-wallpaper-fallback{background:linear-gradient(135deg,#263646,#6b7d72)}

@@ -1,5 +1,6 @@
 import { useMemo, type CSSProperties } from 'react';
 import type { Member, ProgressScene } from '../lib/model';
+import { Avatar } from './SafeImage';
 
 type Props={
   members:Member[];
@@ -61,7 +62,7 @@ export function ClubProgressScene({members,currentUserId,currentUserProgress,tot
             onClick={()=>onOpenMember(member.id)}
             aria-label={`Open ${member.displayName}, ${label}`}
           >
-            <span className="club-progress-avatar">{member.avatarUrl?<img src={member.avatarUrl} alt=""/>:member.displayName.slice(0,1)}</span>
+            <span className="club-progress-avatar"><Avatar src={member.avatarUrl} name={member.displayName}/></span>
             <span className="club-progress-person-copy"><b>{member.id===currentUserId?`${member.displayName} (you)`:member.displayName}</b><small>{label}</small></span>
           </button>
           <div className="club-progress-track" role="progressbar" aria-label={`${member.displayName}: ${Math.round(progress*100)}% complete`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress*100)}>

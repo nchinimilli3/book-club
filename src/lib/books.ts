@@ -257,27 +257,33 @@ export async function findBestBookCover(book:{title:string;author:string;isbn?:s
   return undefined;
 }
 
-export async function getKnownChapterCount(book:{title:string;author:string;isbn?:string}):Promise<number|undefined>{
+export type ChapterMetadata = { count?: number; source: 'openlibrary_toc' | 'none' };
+
+export async function getKnownChapterMetadata(book:{title:string;author:string;isbn?:string}):Promise<ChapterMetadata>{
   try{
     const q=book.isbn?`isbn:${book.isbn}`:`title:${book.title} author:${book.author}`;
     const search=await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=3&fields=key`);
-    if(!search.ok)return undefined;
+    if(!search.ok)return {source:'none'};
     const data=await search.json();
     const key=data.docs?.find((d:any)=>String(d.key||'').startsWith('/works/'))?.key;
-    if(!key)return undefined;
+    if(!key)return {source:'none'};
     const work=await fetch(`https://openlibrary.org${key}.json`);
-    if(!work.ok)return undefined;
+    if(!work.ok)return {source:'none'};
     const json=await work.json();
     const toc=Array.isArray(json.table_of_contents)?json.table_of_contents:[];
-    if(toc.length<2)return undefined;
+    if(toc.length<2)return {source:'none'};
     const chapterish=toc.filter((entry:any)=>{
       const label=String(entry?.title||entry?.label||'').trim();
       if(!label)return false;
       return !/^(contents|acknowledg|copyright|bibliograph|index|notes|about the author)$/i.test(label);
     });
     const count=chapterish.length||toc.length;
-    return count>=2&&count<=180?count:undefined;
-  }catch{return undefined}
+    return count>=2&&count<=180?{count,source:'openlibrary_toc'}:{source:'none'};
+  }catch{return {source:'none'}}
+}
+
+export async function getKnownChapterCount(book:{title:string;author:string;isbn?:string}):Promise<number|undefined>{
+  return (await getKnownChapterMetadata(book)).count;
 }
 
 const topicRules:[RegExp,string][]=[

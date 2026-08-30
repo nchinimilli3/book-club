@@ -434,7 +434,7 @@ export async function savePersonalBook(userId: string, r: { title:string; author
   return bookId;
 }
 
-export async function updatePersonalBook(userId: string, personalBookId: string, patch: { shelf?:string; rating?:number|null; dateFinished?:string|null; isFavorite?:boolean; isPublic?:boolean }) {
+export async function updatePersonalBook(userId: string, personalBookId: string, patch: { shelf?:string; rating?:number|null; dateFinished?:string|null; isFavorite?:boolean; isPublic?:boolean; coverUrl?:string|null }) {
   if (!supabase) throw new Error('Supabase unavailable');
   const payload: any = { ...patch, updated_at: new Date().toISOString() };
   if (patch.shelf==='read' && !('dateFinished' in patch)) payload.date_finished = new Date().toISOString().slice(0,10);

@@ -110,7 +110,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       return;
     }
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data }: { data: { session?: unknown } }) => {
       setSession(data.session as unknown as Session | null);
       setChecking(false);
     });

@@ -109,7 +109,7 @@ export async function importLibrary(request: Request, env: Env, session: AuthSes
   requireSession(session);
   const input = await body<{ books?: unknown }>(request);
   if (!Array.isArray(input.books) || input.books.length === 0 || input.books.length > 500) throw new HttpError(400, 'Import between one and 500 books at a time.', 'invalid_input');
-  const records = input.books.map((item) => libraryRecord(typeof item === 'object' && item !== null ? item as LibraryInput : {}));
+  const records = [...new Map(input.books.map((item) => libraryRecord(typeof item === 'object' && item !== null ? item as LibraryInput : {})).map(record => [`${record.titleKey}::${record.authorKey}`, record] as const)).values()];
   const now = Date.now();
   const inserted = await withIdempotency(env, session.user.id, request.headers.get('idempotency-key'), `library-import:${records.length}:${records.map((item) => `${item.titleKey}:${item.authorKey}`).join('|').slice(0, 500)}`, async () => {
     const statements = records.map((record) => env.DB.prepare(`INSERT INTO personal_library (id, user_id, title, author, cover_url, isbn, pages, published_year, description, shelf, rating, date_finished, is_favorite, is_public, source, title_key, author_key, created_at, updated_at)

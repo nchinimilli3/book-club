@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Eye, EyeOff, Heart, Palette, Plus, Search, Settings, Star, Sticker as StickerIcon, Upload } from 'lucide-react';
 import { useRouter } from '../lib/router';
 import { useApp } from '../lib/AppContext';
-import { getPersonalLibrary, importGoodreads, previewGoodreadsImport, repairBookCover, updatePersonalBook, updateProfileStyle, type GoodreadsImportPreview, type GoodreadsImportResult } from '@book-club/data';
+import { getPersonalLibrary, importGoodreads, previewGoodreadsImport, updatePersonalBook, updateProfileStyle, type GoodreadsImportPreview, type GoodreadsImportResult } from '@book-club/data';
 import { Modal } from '../components/Modal';
 import { BookCover } from '../components/BookCover';
 import { SelectMenu } from '../components/SelectMenu';
@@ -13,6 +13,8 @@ import { readProfileStyleCache, writeProfileStyleCache } from '../lib/profileSty
 import type { ProfileStyle } from '../lib/model';
 import { findBestBookCover } from '../lib/books';
 import { resolveBookCover } from '../lib/api';
+import { cloudAssetUrl } from '../lib/cloudApi';
+import { Avatar, SafeImage } from '../components/SafeImage';
 
 const YEAR=new Date().getFullYear();
 const defaultStyle:ProfileStyle={palette:'rose',layout:'scrapbook',note:'',stickers:[]};
@@ -109,11 +111,10 @@ export function ProfilePage(){
   async function recoverCover(item:LibraryItem,force=false){
     if(!a.user||(!force&&coverRepairAttempts.current.has(item.id)))return;
     coverRepairAttempts.current.add(item.id);
-    const resolved=await resolveBookCover({title:item.book.title,author:item.book.author,isbn:item.book.isbn,currentCover:item.book.coverUrl});
+    const resolved=await resolveBookCover({title:item.book.title,author:item.book.author,isbn:item.book.isbn});
     const cover=resolved?.url||await findBestBookCover({title:item.book.title,author:item.book.author,isbn:item.book.isbn});
     if(!cover){setFailedCovers(old=>new Set(old).add(item.id));return}
-    const saved=await repairBookCover(item.book.id,cover);
-    if(!saved){setFailedCovers(old=>new Set(old).add(item.id));return}
+    try{await updatePersonalBook(a.user.id,item.id,{coverUrl:cover})}catch{setFailedCovers(old=>new Set(old).add(item.id));return}
     setItems(old=>old.map(x=>x.id===item.id?{...x,book:{...x.book,coverUrl:cover}}:x));
     setFailedCovers(old=>{const next=new Set(old);next.delete(item.id);return next});
     setVerifiedCovers(old=>{const next=new Set(old);next.delete(item.id);return next});
@@ -233,15 +234,15 @@ export function ProfilePage(){
   }
 
   const palette=style.palette||'rose',layout=style.layout||'scrapbook';
-  const profileWallpaper=style.wallpaperUrl||(palette==='paper'?'/wallpapers/choice-mythology.webp':`/wallpapers/club-${palette}.webp`);
-  const profileAvatar=style.avatarUrl||a.profile?.avatarUrl;
+  const profileWallpaper=style.wallpaperUrl?cloudAssetUrl(style.wallpaperUrl)||(palette==='paper'?'/wallpapers/choice-mythology.webp':`/wallpapers/club-${palette}.webp`):(palette==='paper'?'/wallpapers/choice-mythology.webp':`/wallpapers/club-${palette}.webp`);
+  const profileAvatar=cloudAssetUrl(style.avatarUrl||a.profile?.avatarUrl);
   return <div className={`page profile-page profile-${palette} profile-layout-${layout}${stickering?' sticker-edit-mode':''}`}>
     <section className="profile-scrapbook-hero">
-      <img className="profile-wallpaper" src={profileWallpaper} alt="" aria-hidden="true"/>
+      <SafeImage className="profile-wallpaper" src={profileWallpaper} alt="" aria-hidden="true" fallback={<div className="profile-wallpaper profile-wallpaper-fallback" aria-hidden="true"/>}/>
       <div className="profile-wallpaper-shade" aria-hidden="true"/>
       <div className="profile-identity">
         <p>Your profile</p>
-        {profileAvatar?<img className="profile-custom-avatar" src={profileAvatar} alt="" aria-hidden="true"/>:<span className="profile-custom-avatar profile-avatar-placeholder" aria-hidden="true">{a.profile?.displayName?.slice(0,1)||'R'}</span>}
+        <Avatar src={profileAvatar} name={a.profile?.displayName} className="profile-custom-avatar profile-avatar-placeholder"/>
         <h1>{a.profile?.displayName||'Reader'}</h1>
         {style.note&&<blockquote>{style.note}</blockquote>}
         <div className="profile-hero-actions"><button type="button" className="secondary" onClick={openCustomizer}><Palette/> Customize</button><button type="button" className="secondary" onClick={openStickerEditor}><StickerIcon/> Stickers</button><button type="button" className="icon-button" onClick={()=>nav('/me/settings')} aria-label="Settings"><Settings/></button></div>
@@ -278,7 +279,7 @@ export function ProfilePage(){
         <p className="goodreads-import-lede">Upload the CSV exported from Goodreads.</p>
         <label className="goodreads-file-button primary">{importing?'Reading your Goodreads library…':'Choose Goodreads CSV'}<Upload aria-hidden="true"/><input type="file" accept=".csv,text/csv" hidden disabled={importing} onChange={e=>{const file=e.target.files?.[0];if(file)void chooseGoodreadsFile(file);e.currentTarget.value=''}}/></label>
         {importError&&<p className="goodreads-import-error" role="alert">{importError}</p>}
-        <small>Reviews and private notes are not published into club discussions.</small>
+        <small>Up to 500 books per import. Reviews and private notes stay private. Book covers are matched later as external links; cover files are never uploaded into your storage. Larger libraries can be imported in batches.</small>
       </div>}
       {importStage==='preview'&&importPreview&&<div className="goodreads-import-step">
         <div className="goodreads-preview-head"><p>Your Goodreads library is ready</p><b>{importPreview.total}</b><span>books found</span></div>
@@ -287,8 +288,8 @@ export function ProfilePage(){
         {importError&&<p className="goodreads-import-error" role="alert">{importError}</p>}
         <div className="goodreads-import-actions"><button type="button" className="secondary" onClick={()=>{setImportStage('choose');setImportFile(null);setImportPreview(null)}}>Choose another file</button><button type="button" className="primary" onClick={()=>void runGoodreadsImport()}>Import library</button></div>
       </div>}
-      {importStage==='importing'&&<div className="goodreads-import-progress" role="status" aria-live="polite"><p>{importProgress.done===0?'Preparing your import...':'Bringing over your books'}</p><b>{importProgress.done}<span> / {importProgress.total||importPreview?.total||0}</span></b><div><i style={{width:`${importProgress.total?Math.round(importProgress.done/importProgress.total*100):0}%`}}/></div><small>{importProgress.done===0?'Getting your Goodreads import ready.':'You can keep this open while the library is saved. Existing Book Club favorites and profile privacy choices stay intact.'}</small></div>}
-      {importStage==='success'&&importResult&&<div className="goodreads-import-success"><p>Imported without changing your club shelves.</p><div className="goodreads-preview-stats"><span><b>{importResult.read}</b>Read</span><span><b>{importResult.currentlyReading}</b>Reading</span><span><b>{importResult.wantToRead}</b>Want to read</span><span><b>{importResult.rated}</b>Rated</span></div><button type="button" className="primary full" onClick={()=>{setImportOpen(false);window.scrollTo({top:0,behavior:'smooth'})}}>See my profile</button></div>}
+      {importStage==='importing'&&<div className="goodreads-import-progress" role="status" aria-live="polite"><p>{importProgress.done===0?'Preparing your import...':'Bringing over your books'}</p><b>{importProgress.done}<span> / {importProgress.total||importPreview?.total||0}</span></b><div><i style={{width:`${importProgress.total?Math.round(importProgress.done/importProgress.total*100):0}%`}}/></div><small>{importProgress.done===0?'Getting your Goodreads import ready.':'You can keep this open while the library is saved. Existing Book Club favorites and profile privacy choices stay intact. Cover links are hydrated in small batches afterward.'}</small></div>}
+      {importStage==='success'&&importResult&&<div className="goodreads-import-success"><p>Imported without changing your club shelves.</p><small>Book Club stores Goodreads details and external cover links only. Your profile photos are the only imported media counted against profile storage.</small><div className="goodreads-preview-stats"><span><b>{importResult.read}</b>Read</span><span><b>{importResult.currentlyReading}</b>Reading</span><span><b>{importResult.wantToRead}</b>Want to read</span><span><b>{importResult.rated}</b>Rated</span></div><button type="button" className="primary full" onClick={()=>{setImportOpen(false);window.scrollTo({top:0,behavior:'smooth'})}}>See my profile</button></div>}
     </Modal>
 
     <Modal open={Boolean(editItem)} onClose={()=>{setEditItem(null);setEditorStatus('')}} title={editItem?.book.title||'Edit book'}>

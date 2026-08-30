@@ -206,3 +206,6 @@
   .import-notice.sync-warning>span{min-width:0;overflow-wrap:anywhere}
   .import-notice.sync-warning button{min-height:40px;padding:0 11px;white-space:nowrap}
 }
+/* Broken uploaded media falls back to the same intentional profile treatment. */
+.profile-wallpaper-fallback{background:linear-gradient(135deg,#e7edf3,#f9f7f1 62%,#d9e2e9);opacity:1}
+.profile-custom-avatar.avatar-fallback{display:grid;place-items:center;background:linear-gradient(145deg,#f4e7d3,#bb8e6d);color:#3d2b20;font:700 37px var(--serif);border-color:rgba(255,255,255,.9)}

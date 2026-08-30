@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BookOpen } from 'lucide-react';
 import { resolveBookCover } from '../lib/api';
 
@@ -19,8 +19,9 @@ export function BookCover({title,author,src,alt,className='',loading='lazy'}:Pro
   const [currentSrc,setCurrentSrc]=useState(src);
   const [failed,setFailed]=useState(false);
   const [retried,setRetried]=useState(false);
+  useEffect(()=>{setCurrentSrc(src);setFailed(false);setRetried(false)},[src]);
   if(currentSrc&&!failed)return <img className={className} loading={loading} src={currentSrc} alt={alt||`Cover of ${title}`} onError={async()=>{
-    if(!retried){setRetried(true);const resolved=await resolveBookCover({title,author:author||'' ,currentCover:currentSrc});if(resolved?.url){setCurrentSrc(resolved.url);setFailed(false);return;}}
+    if(!retried){setRetried(true);const resolved=await resolveBookCover({title,author:author||''});if(resolved?.url&&resolved.url!==currentSrc){setCurrentSrc(resolved.url);setFailed(false);return;}}
     setFailed(true);
   }}/>;
   return <div className={`typographic-cover ${className}`.trim()} role="img" aria-label={alt||`Cover placeholder for ${title}`}>

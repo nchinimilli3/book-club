@@ -5,6 +5,7 @@
 ## Private product tables
 
 - `profiles` — account-facing profile basics + `profile_style`
+- `club-media` — Supabase Storage bucket for versioned club header images
 - `user_preferences` — active club, notification mode, recommendation mood/avoidances, and browser-detected IANA timezone
 - `clubs`, `club_members`, `club_invites` — private club identity, membership, revocable/expiring invites
 - `books`, `club_books` — catalog records + per-club lifecycle/idea attribution
@@ -25,6 +26,8 @@
 ## Canonical frontend RPCs
 
 - `set_active_club(uuid)`
+- `submit_meeting_poll(uuid)`
+- `update_club_header(uuid,text)`
 - `create_club(text,text,text)`
 - `join_club_by_invite(text)`
 - `create_or_get_club_invite(uuid)`
