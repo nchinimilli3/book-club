@@ -52,3 +52,11 @@
   }
 }
 .avatar-placeholder{background:linear-gradient(145deg,#f4e7d3,#bb8e6d)!important;color:#3d2b20!important;border:1px solid rgba(78,53,37,.28)!important;font-family:var(--serif);font-weight:700;box-shadow:inset 0 0 0 2px rgba(255,255,255,.42)}
+/* Fixed icon and label rows keep all three mobile tabs on the same centers. */
+@media(max-width:720px){
+  .mobile-nav{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;align-items:stretch!important;height:72px!important;padding:6px 18px max(8px,env(safe-area-inset-bottom))!important}
+  .mobile-nav button{display:grid!important;grid-template-rows:24px 16px!important;align-content:center!important;justify-items:center!important;gap:3px!important;min-width:0!important;min-height:0!important;line-height:1!important}
+  .mobile-nav button>svg,.mobile-nav .nav-avatar{grid-row:1;align-self:center;justify-self:center;box-sizing:border-box;width:22px!important;height:22px!important}
+  .mobile-nav .nav-avatar{display:grid!important;place-items:center}
+  .mobile-nav button>span{grid-row:2;display:block;align-self:center;line-height:16px!important;font-size:11px!important}
+}

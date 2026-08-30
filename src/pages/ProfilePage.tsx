@@ -164,16 +164,23 @@ export function ProfilePage(){
       if(!file.type.startsWith('image/'))throw new Error('Choose an image file.');
       const source=URL.createObjectURL(file);
       try{
-        const image=await new Promise<HTMLImageElement>((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('That image could not be opened.'));img.src=source});
+        const image=await new Promise<HTMLImageElement>((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('This phone could not open that image. Try choosing it again, or use a JPEG or PNG copy.'));img.src=source});
+        if(!image.naturalWidth||!image.naturalHeight)throw new Error('This phone could not read that image. Try a JPEG or PNG copy.');
         const limit=kind==='avatarUrl'?320:1280;
-        const scale=Math.min(1,limit/Math.max(image.naturalWidth,image.naturalHeight));
-        const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
-        const context=canvas.getContext('2d');if(!context)throw new Error('That image could not be prepared.');
-        context.drawImage(image,0,0,canvas.width,canvas.height);
         const maxBytes=kind==='avatarUrl'?90*1024:260*1024;
-        let quality=.82,blob:Blob|undefined;
-        while(quality>=.42){blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('That image could not be prepared.')),'image/webp',quality));if(blob.size<=maxBytes)break;quality-=.08}
-        if(!blob||blob.size>maxBytes)throw new Error('Choose a simpler image; it could not be optimized enough to save.');
+        let maxSide=limit,blob:Blob|undefined;
+        while(maxSide>=Math.min(limit,kind==='avatarUrl'?72:360)&&!blob){
+          const scale=Math.min(1,maxSide/Math.max(image.naturalWidth,image.naturalHeight));
+          const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+          const context=canvas.getContext('2d');if(!context)throw new Error('This browser could not prepare that image. Try a JPEG or PNG copy.');
+          context.drawImage(image,0,0,canvas.width,canvas.height);
+          for(const quality of [.86,.76,.66,.56,.46,.36]){
+            const candidate=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('This browser could not convert that image to WebP. Try a JPEG or PNG copy.')),'image/webp',quality));
+            if(candidate.size<=maxBytes){blob=candidate;break}
+          }
+          maxSide=Math.floor(maxSide*.72);
+        }
+        if(!blob)throw new Error('This photo is still too large after compression. Try cropping it or choosing a smaller image.');
         const dataUrl=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(new Error('That image could not be prepared.'));reader.readAsDataURL(blob)});
         setStyle(s=>({...s,[kind]:dataUrl}));
         setImageStatus(current=>({...current,[kind]:'Ready to save'}));

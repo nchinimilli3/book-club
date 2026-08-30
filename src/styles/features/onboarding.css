@@ -192,3 +192,9 @@
 }
 /* A failed custom club header keeps the onboarding surface legible. */
 .new-club-wallpaper-fallback{background:linear-gradient(135deg,#263646,#6b7d72)}
+/* Candidate filters and cards may be taller than a phone viewport. */
+@media(max-width:700px){
+  .new-club-page{min-height:0!important;height:auto!important;overflow:visible!important;overscroll-behavior-y:auto!important;padding-bottom:calc(112px + env(safe-area-inset-bottom))!important}
+  .new-club-onboarding{min-height:calc(100dvh - 70px)!important;height:auto!important;overflow:visible!important;padding-bottom:44px!important}
+  .new-club-page .idea-pile-home{padding-bottom:calc(120px + env(safe-area-inset-bottom))!important}
+}

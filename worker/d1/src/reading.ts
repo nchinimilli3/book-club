@@ -25,7 +25,7 @@ export async function readingRoom(env: Env, session: AuthSession | null, clubId:
 export async function saveProgress(request: Request, env: Env, session: AuthSession | null, clubId: string, bookId: string): Promise<Response> {
   requireSession(session); await requireMember(env, session, clubId);
   const input = await body<{ status?: unknown; chapter?: unknown; page?: unknown; percent?: unknown; format?: unknown }>(request);
-  const status = typeof input.status === 'string' && ['not_started', 'reading', 'finished'].includes(input.status) ? input.status : 'reading';
+  const status = typeof input.status === 'string' && ['not_started', 'reading', 'finished', 'sitting_out'].includes(input.status) ? input.status : 'reading';
   const format = typeof input.format === 'string' && ['chapter', 'page', 'percent'].includes(input.format) ? input.format : null;
   const chapter = Number.isSafeInteger(input.chapter) && Number(input.chapter) >= 0 ? Number(input.chapter) : null;
   const page = Number.isSafeInteger(input.page) && Number(input.page) >= 0 ? Number(input.page) : null;
@@ -39,13 +39,14 @@ export async function saveProgress(request: Request, env: Env, session: AuthSess
     percent=excluded.percent, format=excluded.format, updated_at=excluded.updated_at`)
     .bind(clubId, bookId, session.user.id, status, chapter, page, percent, format, now);
   const statements: D1PreparedStatement[] = [progressStatement];
-  if (status === 'finished') {
+  if (status === 'finished' || status === 'sitting_out') {
     statements.push(env.DB.prepare(`UPDATE books SET status='completed', updated_at=?
       WHERE id=? AND club_id=? AND status='current'
         AND (SELECT COUNT(*) FROM club_memberships WHERE club_id=?) > 0
-        AND (SELECT COUNT(*) FROM club_memberships WHERE club_id=?) =
+        AND (SELECT COUNT(*) FROM club_memberships m WHERE m.club_id=?
+          AND COALESCE((SELECT p.status FROM reading_progress p WHERE p.club_id=m.club_id AND p.book_id=? AND p.user_id=m.user_id), 'not_started') != 'sitting_out') =
             (SELECT COUNT(DISTINCT user_id) FROM reading_progress WHERE club_id=? AND book_id=? AND status='finished')`)
-      .bind(now, bookId, clubId, clubId, clubId, clubId, bookId));
+      .bind(now, bookId, clubId, clubId, clubId, bookId, clubId, bookId));
   }
   await env.DB.batch(statements);
   return json({ progress: { status, chapter, page, percent, format, updated_at: now } });

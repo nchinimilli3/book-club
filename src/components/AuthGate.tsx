@@ -123,7 +123,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (!cloudBackend && !isSupabaseConfigured) return children;
   if (checking) {
-    return <BootScreen message="Opening your shelf…" fullViewport />;
+    return <BootScreen message="Opening your clubs…" fullViewport />;
   }
   if (session && mode !== 'reset-password') return children;
 

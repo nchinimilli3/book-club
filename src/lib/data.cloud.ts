@@ -22,7 +22,7 @@ export async function joinClub(code: string) { const joined = await cloudApi.joi
 
 export async function updateProgress(bookId: string, chapter?: number, status = 'reading', totalChapters?: number, page?: number, totalPages?: number, explicitPercent?: number) {
   const percent = explicitPercent ?? (totalChapters && chapter != null ? Math.round(chapter / totalChapters * 100) : totalPages && page != null ? Math.round(page / totalPages * 100) : undefined);
-  return cloudRequest(`/api/books/${encodeURIComponent(bookId)}/progress`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chapter, page, status: status === 'dnf' ? 'not_started' : status, percent, format: explicitPercent != null ? 'percent' : page != null ? 'page' : 'chapter' }) });
+  return cloudRequest(`/api/books/${encodeURIComponent(bookId)}/progress`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chapter, page, status: status === 'dnf' ? 'sitting_out' : status, percent, format: explicitPercent != null ? 'percent' : page != null ? 'page' : 'chapter' }) });
 }
 export async function markAcquired(bookId: string, format = 'Physical') { return cloudApi.bookAction(bookId, 'acquire', { format }); }
 export async function setFinishDate(bookId: string, date: string, chapters?: number, pages?: number) { return cloudApi.bookAction(bookId, 'start_reading', { finishDate: date, chapters, pages }); }

@@ -24,20 +24,20 @@ const QuickPassageCapture = lazy(() => import('./components/QuickPassageCapture'
 function RootRedirect(){
   const a=useApp(),{navigate}=useRouter();
   useEffect(()=>{navigate(a.activeClubId?`/clubs/${a.activeClubId}`:'/clubs',true)},[a.activeClubId,navigate]);
-  return <BootScreen message="Opening BOOK CLUB…"/>;
+  return <BootScreen message="Opening your clubs…"/>;
 }
 
 function ClubRoute({clubId}:{clubId:string}){
   const a=useApp();
   useEffect(()=>{if(a.activeClubId!==clubId)void a.selectClub(clubId).catch(()=>{})},[clubId,a.activeClubId,a.selectClub]);
-  if(a.activeClubId!==clubId||a.workspace?.club.id!==clubId)return <BootScreen message="Opening club…"/>;
+  if(a.activeClubId!==clubId||a.workspace?.club.id!==clubId)return <BootScreen message="Opening your clubs…"/>;
   return <HomePage/>;
 }
 
 function BookRoute({clubId,clubBookId}:{clubId:string;clubBookId:string}){
   const a=useApp();
   useEffect(()=>{if(a.activeClubId!==clubId)void a.selectClub(clubId).catch(()=>{})},[clubId,a.activeClubId,a.selectClub]);
-  if(a.activeClubId!==clubId||a.workspace?.club.id!==clubId)return <BootScreen message="Opening reading room…"/>;
+  if(a.activeClubId!==clubId||a.workspace?.club.id!==clubId)return <BootScreen message="Opening your clubs…"/>;
   return <ReadingRoom clubId={clubId} clubBookId={clubBookId}/>;
 }
 
@@ -112,7 +112,7 @@ function Shell(){
       </div>
     </header>
     {a.offline&&<div className="offline-banner">Offline · showing your last saved club.</div>}
-    <main><Suspense fallback={<BootScreen message="Opening…"/>}>{page}</Suspense></main>
+    <main><Suspense fallback={<BootScreen message="Opening your clubs…"/>}>{page}</Suspense></main>
     <Suspense fallback={null}><QuickPassageCapture/></Suspense>
     <nav className="mobile-nav" aria-label="Primary">
       <button onClick={()=>navigate(currentPath)}><BookOpen/><span>Club</span></button>

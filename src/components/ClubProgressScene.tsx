@@ -16,7 +16,7 @@ function clamp01(value:number){return Math.max(0,Math.min(1,value))}
 
 function place(member:Member){
   if(member.status==='finished')return 'Finished';
-  if(member.status==='dnf')return 'Not finishing';
+  if(member.status==='dnf'||member.status==='sitting_out')return 'Sitting out';
   if(member.format==='page'&&member.page!=null)return `Page ${member.page}`;
   if(member.format==='percent'&&member.percent!=null)return `${Math.round(Number(member.percent))}%`;
   if(member.format==='chapter'&&member.chapter!=null)return `Chapter ${member.chapter}`;
@@ -29,7 +29,7 @@ function place(member:Member){
 /** One source of truth for every progress visualization. */
 export function getMemberReadingProgress(member:Member,totalChapters:number,totalPages:number){
   if(member.status==='finished')return 1;
-  if(member.status==='dnf')return 0;
+  if(member.status==='dnf'||member.status==='sitting_out')return 0;
   const format=member.format;
   if(format==='page'&&member.page!=null&&totalPages>0)return clamp01(member.page/totalPages);
   if(format==='percent'&&member.percent!=null)return clamp01(Number(member.percent)/100);
@@ -69,7 +69,7 @@ export function ClubProgressScene({members,currentUserId,currentUserProgress,tot
             <i style={{'--member-progress':`${progress*100}%`} as CSSProperties}/>
             <span style={{'--member-progress':`${progress*100}%`} as CSSProperties}/>
           </div>
-          <strong className="club-progress-percent">{member.status==='finished'?'Done':`${Math.round(progress*100)}%`}</strong>
+          <strong className="club-progress-percent">{member.status==='finished'?'Done':member.status==='dnf'||member.status==='sitting_out'?'Out':`${Math.round(progress*100)}%`}</strong>
         </div>
       })}
     </div>

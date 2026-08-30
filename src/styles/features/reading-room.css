@@ -1185,3 +1185,18 @@
   .reading-room .reading-plan-calendar-actions>:is(button,a)::before,
   .reading-room .reading-plan-calendar-actions>:is(button,a)::after{content:none!important;display:none!important}
 }
+
+/* Final icon-only calendar controls. The count is added by ReadingRoom so a
+   checkpoint tile is only present when it can do something useful. */
+.reading-room .reading-plan-calendar-actions{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important}
+.reading-room .reading-plan-calendar-actions.calendar-actions-2{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+.reading-room .reading-plan-calendar-actions.calendar-actions-1{grid-template-columns:minmax(0,1fr)!important}
+.reading-room .reading-plan-calendar-actions>:is(button,a){display:grid!important;place-items:center!important;min-height:62px!important;padding:10px!important}
+.reading-room .reading-plan-calendar-actions .calendar-brand-mark{display:block!important;width:30px!important;height:30px!important;object-fit:contain!important}
+.reading-room .reading-plan-calendar-actions>:is(button,a)>span{display:none!important}
+.reading-room .reading-plan-calendar-actions .calendar-action-next svg{width:27px!important;height:27px!important}
+@media(max-width:720px){
+  .reading-room .reading-plan-calendar-actions{gap:8px!important}
+  .reading-room .reading-plan-calendar-actions>:is(button,a){min-height:72px!important;height:72px!important}
+  .reading-room .reading-plan-calendar-actions .calendar-brand-mark{width:32px!important;height:32px!important}
+}
