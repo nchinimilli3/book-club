@@ -1,0 +1,150 @@
+/* Home realism + color pass.
+   Loaded last so it layers over the editorial home. Shelves (.editorial-club-shelves,
+   .home-acrylic) are intentionally untouched. Colors derive from the cover palette
+   (--home-accent / --home-accent-2 / --home-deep) plus a small fixed "stationery" set
+   so the page isn't beige-on-beige. */
+
+.club-home.editorial-home{
+  --paper-grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --note-yellow:#f6de7a;
+  --note-mint:#a9dcc4;
+  --note-pink:#f3b4bd;
+  --note-blue:#a9c8ec;
+  --lift:0 1px 1px rgba(30,22,16,.08),0 6px 14px -4px rgba(30,22,16,.18),0 18px 36px -18px rgba(30,22,16,.28);
+}
+
+/* ---- Page backdrop: tinted with the cover, not flat cream ---- */
+.club-home.editorial-home::before{
+  background:
+    var(--paper-grain),
+    radial-gradient(120% 60% at 0% 0%,color-mix(in srgb,var(--home-accent) 22%,transparent) 0%,transparent 60%),
+    radial-gradient(90% 50% at 100% 30%,color-mix(in srgb,var(--home-accent-2) 18%,transparent) 0%,transparent 65%),
+    linear-gradient(180deg,color-mix(in srgb,var(--home-accent-soft) 55%,#fff) 0%,color-mix(in srgb,var(--home-wash) 70%,#fff) 60%,color-mix(in srgb,var(--home-bg) 60%,#fff) 100%);
+}
+
+/* ---- Current read band: a saturated color field behind the book ---- */
+.club-home.editorial-home .editorial-current::before{
+  background:
+    var(--paper-grain),
+    linear-gradient(105deg,
+      color-mix(in srgb,var(--home-accent) 48%,var(--home-accent-soft)) 0%,
+      color-mix(in srgb,var(--home-accent-soft) 70%,#fff) 46%,
+      color-mix(in srgb,var(--home-accent-2) 36%,#fff) 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -1px 0 color-mix(in srgb,var(--home-deep) 18%,transparent);
+}
+
+/* Book cover: spine crease, page block and a real contact shadow */
+.club-home.editorial-home .editorial-cover-button{position:relative;border-radius:2px 5px 5px 2px;transition:transform .25s ease,box-shadow .25s ease;
+  box-shadow:
+    1px 0 0 #f4efe6,2px 0 0 #d9d1c3,3px 1px 0 #f1ebe0,4px 1px 0 #cfc6b6,
+    0 2px 3px rgba(20,14,10,.22),
+    0 22px 40px -14px color-mix(in srgb,var(--home-deep) 60%,transparent),
+    0 40px 60px -30px rgba(20,14,10,.45);
+}
+.club-home.editorial-home .editorial-cover-button::after{content:'';position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+  background:
+    linear-gradient(90deg,rgba(0,0,0,.28) 0,rgba(255,255,255,.22) 3%,rgba(0,0,0,.12) 5.5%,transparent 9%),
+    linear-gradient(120deg,rgba(255,255,255,.18) 0%,transparent 38%);
+  mix-blend-mode:multiply;
+}
+.club-home.editorial-home .editorial-cover-button:hover{transform:translateY(-3px) rotate(-.6deg)}
+
+/* Meta row (progress / room etc.) as colored index tabs */
+.club-home.editorial-home .editorial-reading-meta>div{
+  background:
+    var(--paper-grain),
+    linear-gradient(180deg,#fffdf8,color-mix(in srgb,var(--home-accent-soft) 45%,#fff));
+  border-left:0;border-top:3px solid var(--home-accent);
+  border-radius:4px 4px 6px 6px;padding:12px 16px;box-shadow:var(--lift);
+}
+.club-home.editorial-home .editorial-reading-meta>div:nth-child(2){border-top-color:var(--home-accent-2)}
+.club-home.editorial-home .editorial-reading-meta>div:nth-child(3){border-top-color:color-mix(in srgb,var(--home-accent) 50%,#d98c3f)}
+.club-home.editorial-home .editorial-reading-meta>div+div{border-left:0}
+@media(min-width:701px){
+  .club-home.editorial-home .editorial-reading-meta{gap:12px}
+}
+@media(max-width:700px){
+  .club-home.editorial-home .editorial-reading-meta{gap:8px;border-top:0}
+  .club-home.editorial-home .editorial-reading-meta>div{padding:8px 14px}
+}
+
+/* ---- Meeting: a punched ticket in the book's deep color ---- */
+.club-home.editorial-home .editorial-meeting{
+  --ticket:color-mix(in srgb,var(--home-accent) 78%,var(--home-deep));
+  background:
+    var(--paper-grain),
+    linear-gradient(160deg,color-mix(in srgb,var(--ticket) 22%,#fffaf2) 0%,color-mix(in srgb,var(--ticket) 38%,#fff6ea) 100%);
+  border:0;border-radius:14px;padding:26px 26px 24px 34px;margin-block:12px;box-shadow:var(--lift);
+  outline:1px dashed color-mix(in srgb,var(--ticket) 45%,transparent);outline-offset:-8px;
+}
+.club-home.editorial-home .editorial-meeting::before{content:'';position:absolute;left:0;top:14px;bottom:14px;width:7px;border-radius:0 6px 6px 0;
+  background:repeating-linear-gradient(180deg,var(--ticket) 0 10px,color-mix(in srgb,var(--ticket) 60%,#fff) 10px 14px);
+}
+.club-home.editorial-home .editorial-meeting.is-live{
+  background:
+    var(--paper-grain),
+    linear-gradient(160deg,color-mix(in srgb,#e8674f 20%,#fff6ef) 0%,color-mix(in srgb,#e8674f 34%,#fff1e6) 100%);
+  --ticket:#c8472f;
+}
+@media(max-width:700px){
+  .club-home.editorial-home .editorial-meeting{padding:22px 20px 20px 26px;margin-top:18px;border-top:0}
+}
+
+/* ---- Welcome cards: colored card stock with washi tape ---- */
+.club-home.editorial-home .welcome-card,
+.club-home.editorial-home .welcome-back{position:relative;
+  background:
+    var(--paper-grain),
+    linear-gradient(135deg,color-mix(in srgb,var(--home-accent) 30%,#fff5e8) 0%,color-mix(in srgb,var(--home-accent-2) 22%,#fff) 100%);
+  border:0;box-shadow:var(--lift);border-radius:10px;
+}
+.club-home.editorial-home .welcome-card::before,
+.club-home.editorial-home .welcome-back::before{content:'';position:absolute;top:-10px;left:28px;width:96px;height:22px;transform:rotate(-4deg);
+  background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--note-pink) 85%,transparent) 0 6px,color-mix(in srgb,var(--note-pink) 60%,#fff) 6px 12px);
+  box-shadow:0 1px 2px rgba(0,0,0,.12);opacity:.92;
+}
+
+/* ---- Activity: pinned sticky notes in a rotating palette ---- */
+.club-home.editorial-home .editorial-activity>div{gap:22px}
+.club-home.editorial-home .editorial-activity article{
+  --note:var(--note-yellow);
+  position:relative;border:0;padding:24px 20px 20px;border-radius:2px 2px 14px 2px;
+  background:
+    var(--paper-grain),
+    linear-gradient(180deg,color-mix(in srgb,var(--note) 70%,#fff) 0%,var(--note) 100%);
+  box-shadow:0 1px 1px rgba(0,0,0,.08),0 12px 18px -10px rgba(40,30,10,.35);
+  transform:rotate(-1deg);transition:transform .2s ease;
+}
+.club-home.editorial-home .editorial-activity article:nth-child(3n+2){--note:var(--note-mint);transform:rotate(.8deg)}
+.club-home.editorial-home .editorial-activity article:nth-child(3n+3){--note:var(--note-blue);transform:rotate(-.4deg)}
+.club-home.editorial-home .editorial-activity article:nth-child(4n+4){--note:var(--note-pink)}
+.club-home.editorial-home .editorial-activity article:first-child{padding-left:20px}
+.club-home.editorial-home .editorial-activity article:hover{transform:rotate(0) translateY(-2px)}
+.club-home.editorial-home .editorial-activity article::before{content:'';position:absolute;top:-7px;left:50%;width:14px;height:14px;margin-left:-7px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#fff 0 12%,var(--home-accent) 40%,var(--home-deep) 100%);
+  box-shadow:0 2px 3px rgba(0,0,0,.3);
+}
+.club-home.editorial-home .editorial-activity article b{color:color-mix(in srgb,var(--home-deep) 80%,#000)}
+.club-home.editorial-home .editorial-activity .activity-avatar{box-shadow:0 0 0 2px #fff,0 2px 4px rgba(0,0,0,.18)}
+@media(max-width:900px){
+  .club-home.editorial-home .editorial-activity article,
+  .club-home.editorial-home .editorial-activity article:first-child{padding:22px 18px 18px;border-top:0}
+}
+
+/* ---- Candidate pile + ballot: colored backing boards ---- */
+.club-home.editorial-home .idea-book-card{transition:transform .2s ease}
+.club-home.editorial-home .idea-book-card img{box-shadow:1px 0 0 #efe8dc,2px 1px 0 #d3cabb,0 14px 24px -10px rgba(20,14,10,.45)}
+.club-home.editorial-home .idea-book-card:hover{transform:translateY(-4px)}
+.club-home.editorial-home .ballot-home{
+  background:
+    var(--paper-grain),
+    linear-gradient(160deg,color-mix(in srgb,var(--home-accent-2) 18%,#fff) 0%,color-mix(in srgb,var(--home-accent) 12%,#fff) 100%);
+  border-radius:14px;padding:28px 24px 24px;box-shadow:var(--lift);
+}
+.club-home.editorial-home .voting-live{background:var(--home-accent);color:#fff;border-color:transparent}
+
+@media(prefers-reduced-motion:reduce){
+  .club-home.editorial-home .editorial-activity article,
+  .club-home.editorial-home .editorial-cover-button,
+  .club-home.editorial-home .idea-book-card{transition:none}
+}
