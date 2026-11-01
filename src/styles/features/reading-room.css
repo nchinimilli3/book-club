@@ -1221,6 +1221,8 @@
 /* Phone reading room: the cover keeps its full-size presence; the tabs stick
    under the app header while scrolling so switching is always in reach. */
 @media(max-width:720px){
+  /* One centred axis: the cover is centred, so its label, title and author are too. */
+  .page.reading-room .reading-cover-story .reading-copy :is(.reading-club-label,h1,h2){text-align:center}
   .page.reading-room .reading-tabs{position:sticky!important;top:58px!important;z-index:30;margin:18px -16px 0!important;padding:0 16px!important;width:auto!important;max-width:none!important;background:rgba(255,255,255,.94);box-shadow:0 1px 0 var(--line)}
 }
 
