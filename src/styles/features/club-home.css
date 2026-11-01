@@ -542,7 +542,7 @@
 }
 
 /* Ballot deadline/runoff states: extend the existing club-home feature sheet. */
-.ballot-deadline{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0 0;color:var(--muted);font-size:12px}.ballot-deadline b{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink)}.ballot-awaiting-admin{margin:10px 0 0;font-size:12px;color:var(--muted)}.ballot-setup-dialog>p{color:var(--muted);line-height:1.5}.ballot-needs-decision .voting-live{color:var(--accent)}
+.ballot-deadline{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0 0;color:var(--muted);font-size:12px}.ballot-deadline b{font-size:13px;font-weight:700;color:var(--ink)}.ballot-awaiting-admin{margin:10px 0 0;font-size:12px;color:var(--muted)}.ballot-setup-dialog>p{color:var(--muted);line-height:1.5}.ballot-needs-decision .voting-live{color:var(--accent)}
 
 .plan-draft-note{margin:0 0 18px;color:var(--muted);font-size:13px;line-height:1.45}
 /* Canonical mobile meeting alignment and wrapping. */
@@ -584,3 +584,37 @@
   .club-home .home-discussion article>small{grid-area:meta;position:static!important;margin:0!important}
   .club-home .home-discussion article p{grid-area:body;position:static!important;margin:0!important;min-width:0;overflow-wrap:anywhere}
 }
+
+/* Ballot: the privacy note and deadline read as normal sentences, not a
+   narrow bold caption. */
+.ballot-home>header .ballot-private-note{max-width:520px;margin-top:10px;font-weight:400;font-size:15px;line-height:1.5}
+.ballot-home>header .ballot-deadline{max-width:none;font-weight:500;font-size:13px}
+
+/* Phone-first club home: the club name clears the Invite/Settings buttons,
+   and ballot books become compact rows (cover, title, rank button) so a
+   reader can rank without scrolling past full-height covers. */
+@media(max-width:720px){
+  .club-home .club-masthead-hero .club-masthead-copy{max-width:calc(100% - 112px)}
+  .club-home .club-masthead-hero .club-masthead-copy h1{font-size:clamp(30px,8.6vw,38px)!important;line-height:1!important;overflow-wrap:anywhere}
+  .editorial-home .ballot-home.ballot-home{margin-top:24px;padding-top:22px}
+  .club-home .ballot-home>header{padding-bottom:18px}
+  .club-home .ballot-home>header h2{font-size:clamp(30px,8.6vw,38px)}
+  .club-home .ballot-preference-list{display:grid!important;grid-template-columns:1fr!important;gap:0!important}
+  .club-home .ballot-preference-list>article{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:center;gap:12px!important;padding:12px 0;border-bottom:1px solid var(--line)}
+  .club-home .ballot-preference-list .ballot-book{display:grid!important;grid-template-columns:52px minmax(0,1fr);gap:12px;align-items:center}
+  .club-home .ballot-preference-list .ballot-book>:first-child{width:52px!important;height:auto!important;aspect-ratio:2/3;border-radius:4px;box-shadow:0 4px 12px rgba(20,20,20,.14);transform:none!important}
+  .club-home .ballot-preference-list .ballot-book>span{margin:0!important}
+  .club-home .ballot-preference-list .ballot-book b{font-size:16px}
+  .club-home .ballot-preference-list .rank-picker{margin:0!important}
+  .club-home .ballot-preference-list .rank-picker button{width:auto;min-width:104px;min-height:44px;padding:0 12px;white-space:nowrap}
+  /* Rating phase: cover beside the title so "Rate the book" is on the first screen. */
+  .club-home .book-hero.ritual-rating{display:grid!important;grid-template-columns:104px minmax(0,1fr)!important;align-items:start;gap:16px;margin:20px 0 0!important;padding:0!important;min-height:0!important;width:auto!important}
+  .club-home .book-hero.ritual-rating>.hero-cover-wrap{grid-column:1;grid-row:1;margin:0!important;padding:0!important;min-height:0!important;width:auto!important;background:none!important}
+  .club-home .book-hero.ritual-rating>.hero-cover-wrap .hero-cover-button{width:104px!important;margin:0!important;transform:none!important}
+  .club-home .book-hero.ritual-rating>.hero-cover-wrap img{width:104px!important;height:auto!important;aspect-ratio:2/3}
+  .club-home .book-hero.ritual-rating>.hero-copy{grid-column:2;grid-row:1;text-align:left!important;padding:0!important;margin:0!important;width:auto!important}
+  .club-home .book-hero.ritual-rating>.hero-copy h2{font-size:clamp(30px,9vw,38px)!important;margin:4px 0 0!important}
+  .club-home .book-hero.ritual-rating .hero-actions{display:grid!important;gap:8px;margin-top:14px!important;width:100%!important}
+  .club-home .book-hero.ritual-rating .hero-actions>button{width:100%!important;justify-content:center}
+}
+.editorial-meta-action:disabled{cursor:default;opacity:1}
