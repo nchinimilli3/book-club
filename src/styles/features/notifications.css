@@ -56,8 +56,6 @@
 @media(max-width:720px){.notification-list>button small{font-size:11px}
 }
 
-.notifications-title .secondary{border-color:var(--ink);background:var(--ink);color:var(--paper)}
-
 .notification-item.is-read .notification-line b{font-weight:600;color:#57514b}
 
 .notification-item.is-read .notification-body{opacity:.68}
@@ -65,8 +63,6 @@
 .notification-item.is-read .notification-icon{opacity:.68}
 
 .notifications-page{max-width:960px}
-
-.notifications-title{align-items:center;margin-bottom:24px}
 
 .notification-list{border-top:1px solid var(--line);margin-top:0;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#fff}
 
@@ -153,3 +149,7 @@
   .notifications-empty-icon{width:20px;height:20px;margin-top:4px}
   .notifications-empty-state h2{font-size:34px}
 }
+
+.notifications-title{margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.notifications-title .secondary{border-color:var(--ink);background:var(--ink);color:var(--paper);display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;width:auto;height:38px;min-height:38px;margin:0;padding:0 14px;border-radius:999px;white-space:nowrap;font:600 13.5px/1 var(--sans)}
+.notifications-title .secondary svg{width:16px;height:16px}

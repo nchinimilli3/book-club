@@ -25,12 +25,12 @@ export function JoinInvitePage({code}:{code:string}){
   if(!preview)return <div className="page join-page"><section className="join-card"><h1>This invite has expired.</h1><p>{error||'Ask someone in the club for a fresh link.'}</p><button className="secondary" onClick={()=>navigate('/clubs')}>Back to clubs</button></section></div>;
   const members:any[]=preview.members||[],books:any[]=preview.choosing||[];
   return <div className="page join-page"><section className="join-card join-preview">
-    <div className="join-private"><Users/> Private club · {preview.memberCount||members.length} members</div>
-    <h1>{preview.name}</h1>
+    <div className="join-private"><Users/> Private club · {(()=>{const n=preview.memberCount||members.length;return n===1?'1 member':`${n} members`})()}</div>
+    <h1>{preview.name||'You’re invited'}</h1>
     <p className="join-lede">You were invited to read with this group.</p>
     {members.length>0&&<div className="join-members">{members.map((m:any,i:number)=><span key={`${m.name}-${i}`}><Avatar src={m.avatarUrl} name={m.name}/><b>{m.name}</b></span>)}</div>}
     {books.length>0&&<div className="join-books"><small>Currently choosing</small><div>{books.map((x:any)=><BookCover key={x.id||x.title} title={x.title} author={x.author} src={x.coverUrl}/>)}</div></div>}
-    <button className="primary join-button" type="button" disabled={busy} onClick={join}>{busy?'Joining…':`Join ${preview.name}`} <ArrowRight/></button>
+    <button className="primary join-button" type="button" disabled={busy} onClick={join}>{busy?'Joining…':(preview.name?`Join ${preview.name}`:'Join this club')} <ArrowRight/></button>
     {error&&<FeedbackMessage kind="error">{error}</FeedbackMessage>}
   </section></div>
 }
