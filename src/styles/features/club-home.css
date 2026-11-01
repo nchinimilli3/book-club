@@ -611,12 +611,11 @@
      "Rate the book" land on the first phone screen. */
   .club-home .book-hero.ritual-rating{margin-top:10px!important}
   .club-home .book-hero.ritual-rating>.hero-cover-wrap{padding-block:6px!important;min-height:0!important}
-  .club-home .book-hero.ritual-rating>.hero-copy{padding-top:8px!important}
   .club-home .book-hero.ritual-rating>.hero-copy .phase{margin-top:0!important}
   /* Centred composition: straight cover, centred text, full-width actions,
      all on the page gutters instead of a cover-width column. */
   .club-home .book-hero.ritual-rating>.hero-cover-wrap .hero-cover-button,.club-home .book-hero.ritual-rating>.hero-cover-wrap img{transform:none!important;rotate:none!important}
-  .club-home .book-hero.ritual-rating>.hero-copy{flex:1 1 100%!important;width:auto!important;max-width:none!important;margin-inline:16px!important;padding-inline:0!important;text-align:center!important}
+  .club-home .book-hero.ritual-rating>.hero-copy{flex:1 1 100%!important;width:auto!important;max-width:none!important;margin-inline:16px!important;padding-inline:0!important;padding-top:8px!important;text-align:center!important}
   .club-home .book-hero.ritual-rating>.hero-copy :is(.phase,h2,.author){text-align:center!important;max-width:none!important}
   .club-home .book-hero.ritual-rating .hero-actions{display:grid!important;gap:8px;width:100%!important;max-width:none!important}
   .club-home .book-hero.ritual-rating .hero-actions>button{width:100%!important;justify-content:center}
