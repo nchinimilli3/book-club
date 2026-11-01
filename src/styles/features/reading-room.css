@@ -1217,3 +1217,19 @@
 }
 /* "Your place" value is a reading position, not a label: sentence case. */
 .reading-room .reading-position-control .position-copy>b{text-transform:none;letter-spacing:-.02em}
+
+/* Phone-first reading room: the first screen should reach the reading tools,
+   not just the cover. Cover becomes a thumbnail beside the title, "Your place"
+   spans the width, and the tabs stick under the app header while scrolling. */
+@media(max-width:720px){
+  .page.reading-room .reading-cover-story{display:grid!important;grid-template-columns:minmax(0,1fr) 84px!important;grid-template-areas:"label art" "title art" "author art" "place place";column-gap:16px;row-gap:4px;align-items:start;min-height:0!important;height:auto!important;padding:6px 0 0!important;margin:0!important}
+  .page.reading-room .reading-cover-story>.reading-copy{display:contents!important}
+  .page.reading-room .reading-cover-story .reading-club-label{grid-area:label;margin:0!important}
+  .page.reading-room .reading-cover-story h1{grid-area:title;margin:2px 0 0!important;font-size:clamp(32px,9.5vw,44px)!important;line-height:.98!important;overflow-wrap:anywhere}
+  .page.reading-room .reading-cover-story h2{grid-area:author;margin:6px 0 0!important}
+  .page.reading-room .reading-cover-story .reading-position-control{grid-area:place;margin:18px 0 0!important;width:100%!important}
+  .page.reading-room .reading-cover-story .reading-art{grid-area:art;display:block!important;margin:0!important;padding:0!important;min-height:0!important}
+  .page.reading-room .reading-cover-story .reading-art .main-cover{width:84px!important;max-width:84px!important;margin:0!important;border-radius:6px;box-shadow:0 10px 24px rgba(20,20,20,.16)}
+  .page.reading-room .reading-tabs{position:sticky!important;top:58px!important;z-index:30;margin:18px -16px 0!important;padding:0 16px!important;width:auto!important;max-width:none!important;background:rgba(255,255,255,.94);box-shadow:0 1px 0 var(--line)}
+  .page.reading-room .reading-top{margin-bottom:8px}
+}

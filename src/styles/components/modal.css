@@ -59,3 +59,18 @@ body:has(.modal-backdrop){overflow:hidden}.progress-dialog{
 }
 .dialog-close>span{display:block;transform:translateY(-1px);line-height:1}
 @media(max-width:560px){.dialog.compact>h2{font-size:clamp(30px,8vw,36px);line-height:1;white-space:nowrap;margin-right:48px}.dialog.compact .dialog-close{top:16px;right:16px;font-size:24px;line-height:42px;text-align:center}}
+
+/* Phone-first dialogs: on small screens every dialog and sheet rises from the
+   bottom edge (design audit #38), so its actions sit under the thumb and the
+   tab bar is covered while it is open. */
+@keyframes sheet-rise{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
+@media(max-width:720px){
+  .modal-backdrop:has(>.dialog,>.sheet){place-items:end center;align-items:end;padding:0;padding-top:max(24px,env(safe-area-inset-top))}
+  .modal-backdrop>:is(.dialog,.sheet){width:100%!important;max-width:none!important;max-height:calc(100dvh - 48px)!important;margin:0!important;border-radius:20px 20px 0 0!important;border-bottom:0!important;padding-bottom:max(22px,calc(env(safe-area-inset-bottom) + 16px))!important;box-shadow:0 -12px 40px rgba(24,21,18,.18)!important;animation:sheet-rise .22s ease-out both}
+  .modal-backdrop>:is(.dialog,.sheet)::before{content:'';display:block;width:36px;height:4px;border-radius:2px;background:var(--line-strong);margin:-12px auto 14px}
+  .modal-backdrop .progress-dialog .progress-actions{display:grid!important;grid-template-columns:1fr!important}
+  /* Some pages create their own stacking context, so step the tab bar and the
+     floating Quick add out of the way instead of relying on z-index. */
+  body:has(.modal-backdrop) :is(.mobile-nav,.quick-passage-fab){display:none!important}
+}
+@media(max-width:720px) and (prefers-reduced-motion:reduce){.modal-backdrop>:is(.dialog,.sheet){animation:none}}

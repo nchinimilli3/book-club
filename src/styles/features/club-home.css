@@ -290,13 +290,15 @@
   border:4px solid rgb(var(--home-acrylic-edge-rgb));
   box-shadow:0 1px 4px rgba(0,0,0,.18);
 }.club-home .progress-dialog .quiet-danger{
-  border:1px solid #dba1a5;
-  background:#fff4f4;
-  color:#8e2934;
-  text-decoration:none;
+  /* DNF stays a quiet, non-destructive choice (design audit #40). */
+  border:0;
+  background:none;
+  color:var(--muted);
+  text-decoration:underline;
+  text-underline-offset:4px;
 }
 @media(max-width:700px){
-  .club-home .progress-dialog .quiet-danger{font-size:14px;line-height:1.15;white-space:normal;text-wrap:balance;min-height:64px;padding:10px 12px}
+  .club-home .progress-dialog .quiet-danger{font-size:14px;line-height:1.2;white-space:normal;min-height:44px;padding:6px 12px}
 }
 .club-home .primary{
   border-radius:8px;
@@ -468,7 +470,7 @@
   .editorial-activity article:first-child{border-top:0;padding-top:0}
 }
 @media(max-width:700px){
-  .club-home.editorial-home{margin-inline:0;padding:0 16px calc(92px + env(safe-area-inset-bottom));overflow-x:hidden}
+  .club-home.editorial-home{margin-inline:0;padding:0 16px calc(92px + env(safe-area-inset-bottom));overflow-x:hidden;--page-gutter:16px}
   .club-home.editorial-home::before{background:var(--home-surface)}
   .editorial-home .club-masthead-hero{min-height:196px;height:196px;margin:0 -16px;padding:22px 20px;border-radius:0;background-position:center}
   .editorial-home .club-masthead-copy>h1{font-size:clamp(38px,12vw,48px);line-height:.95;max-width:calc(100vw - 112px);overflow-wrap:normal}

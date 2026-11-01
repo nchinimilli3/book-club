@@ -104,3 +104,12 @@
 .preview-save-actions .preview-saved{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--paper);color:var(--ink);border:1px solid var(--line-strong)}
 .preview-save-actions .preview-saved:disabled{opacity:1;cursor:default}
 .preview-save-actions .preview-saved svg{width:16px;height:16px;color:var(--moss)}
+.search-hint{margin:4px 0 0;color:var(--muted);font-size:15px;line-height:1.5}
+/* Phone-first book preview: a smaller cover brings the title and decision
+   guide up, and the club action stays in reach above the tab bar. */
+@media(max-width:720px){
+  .book-preview .preview-cover-column .preview-cover.preview-cover{width:min(132px,100%)}
+  .book-preview .preview-club-save{position:fixed;left:0;right:0;bottom:calc(72px + env(safe-area-inset-bottom));z-index:60;margin:0;padding:10px 16px;background:rgba(255,255,255,.96);border-top:1px solid var(--line)}
+  .book-preview .preview-club-save>button{width:100%;min-height:48px}
+  .page.book-preview:has(.preview-club-save){padding-bottom:calc(92px + 72px + env(safe-area-inset-bottom))}
+}
