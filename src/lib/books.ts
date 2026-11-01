@@ -105,7 +105,8 @@ export async function searchBooks(query:string): Promise<BookSearchResult[]> {
 
   const googleUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=30`;
   const res = await fetch(googleUrl);
-  if (!res.ok) return [];
+  // Surface a provider failure to the caller instead of reporting "no match".
+  if (!res.ok) throw new Error('Book search is unavailable right now.');
   const data = await res.json();
   const fallback=(data.items ?? []).map((item:any) => {
     const v = item.volumeInfo ?? {};

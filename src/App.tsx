@@ -5,6 +5,7 @@ import { RouterProvider, match, useRouter } from './lib/router';
 import { HomePage } from './pages/HomePage';
 import { markAllNotificationsRead } from '@book-club/data';
 import { BootScreen } from './components/BootScreen';
+import { PageState } from './components/PageState';
 import { cloudApi } from './lib/cloudApi';
 import { Avatar } from './components/SafeImage';
 
@@ -28,17 +29,23 @@ function RootRedirect(){
 }
 
 function ClubRoute({clubId}:{clubId:string}){
-  const a=useApp();
-  useEffect(()=>{if(a.activeClubId!==clubId)void a.selectClub(clubId).catch(()=>{})},[clubId,a.activeClubId,a.selectClub]);
-  if(a.activeClubId!==clubId||a.workspace?.club.id!==clubId)return <BootScreen message="Opening your clubs…"/>;
-  return <HomePage/>;
+  return <ClubScope clubId={clubId}><HomePage/></ClubScope>;
 }
 
 function BookRoute({clubId,clubBookId}:{clubId:string;clubBookId:string}){
-  const a=useApp();
-  useEffect(()=>{if(a.activeClubId!==clubId)void a.selectClub(clubId).catch(()=>{})},[clubId,a.activeClubId,a.selectClub]);
+  return <ClubScope clubId={clubId}><ReadingRoom clubId={clubId} clubBookId={clubBookId}/></ClubScope>;
+}
+
+/** Deep links into club-scoped pages (settings, archive, members, meeting mode)
+ *  switch the active club first, the same way the club and book routes do. */
+function ClubScope({clubId,children}:{clubId:string;children:React.ReactNode}){
+  const a=useApp(),{navigate}=useRouter();
+  const member=a.clubs.some(c=>c.id===clubId);
+  useEffect(()=>{if(member&&a.activeClubId!==clubId)void a.selectClub(clubId).catch(()=>{})},[clubId,member,a.activeClubId,a.selectClub]);
+  // A removed member or a stale link would otherwise wait on the boot screen forever.
+  if(!member)return <div className="page"><PageState title="This club isn’t available." body="You may have left it, or the link is out of date." action={<button type="button" className="secondary" onClick={()=>navigate('/clubs')}>See your clubs</button>}/></div>;
   if(a.activeClubId!==clubId||a.workspace?.club.id!==clubId)return <BootScreen message="Opening your clubs…"/>;
-  return <ReadingRoom clubId={clubId} clubBookId={clubBookId}/>;
+  return <>{children}</>;
 }
 
 function UnknownRoute(){
@@ -52,7 +59,7 @@ function Shell(){
   const[clubMenuOpen,setClubMenuOpen]=useState(false);
   const[notificationMenuOpen,setNotificationMenuOpen]=useState(false);
   const[clearingNotifications,setClearingNotifications]=useState(false);
-  useEffect(()=>{if(!clubMenuOpen&&!notificationMenuOpen)return;const close=(event:PointerEvent)=>{const target=event.target as Element;if(!target.closest('.club-switcher-wrap')&&!target.closest('.notification-menu-wrap')){setClubMenuOpen(false);setNotificationMenuOpen(false)}};document.addEventListener('pointerdown',close);return()=>document.removeEventListener('pointerdown',close)},[clubMenuOpen,notificationMenuOpen]);
+  useEffect(()=>{if(!clubMenuOpen&&!notificationMenuOpen)return;const close=(event:PointerEvent)=>{const target=event.target as Element;if(!target.closest('.club-switcher-wrap')&&!target.closest('.notification-menu-wrap')){setClubMenuOpen(false);setNotificationMenuOpen(false)}};const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape'){setClubMenuOpen(false);setNotificationMenuOpen(false)}};document.addEventListener('pointerdown',close);document.addEventListener('keydown',onKey);return()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',onKey)}},[clubMenuOpen,notificationMenuOpen]);
   if(a.loading)return <BootScreen message="Opening your clubs…" fullViewport/>;
   if(a.error)return <div className="boot"><b>Something went wrong.</b><span>{a.error}</span><button onClick={a.refresh}>Try again</button></div>;
 
@@ -68,11 +75,11 @@ function Shell(){
   if(path==='/')page=<RootRedirect/>;
   else if(invite)page=<JoinInvitePage code={invite.code}/>;
   else if(path==='/clubs')page=<ClubsPage/>;
-  else if(meetingMode)page=<MeetingModePage clubId={meetingMode.clubId} clubBookId={meetingMode.clubBookId}/>;
-  else if(member)page=<MemberProfilePage clubId={member.clubId} memberId={member.memberId}/>;
-  else if(clubSettings)page=<ClubSettingsPage clubId={clubSettings.clubId}/>;
+  else if(meetingMode)page=<ClubScope clubId={meetingMode.clubId}><MeetingModePage clubId={meetingMode.clubId} clubBookId={meetingMode.clubBookId}/></ClubScope>;
+  else if(member)page=<ClubScope clubId={member.clubId}><MemberProfilePage clubId={member.clubId} memberId={member.memberId}/></ClubScope>;
+  else if(clubSettings)page=<ClubScope clubId={clubSettings.clubId}><ClubSettingsPage clubId={clubSettings.clubId}/></ClubScope>;
   else if(book)page=<BookRoute clubId={book.clubId} clubBookId={book.clubBookId}/>;
-  else if(archive)page=<ArchivePage clubId={archive.clubId}/>;
+  else if(archive)page=<ClubScope clubId={archive.clubId}><ArchivePage clubId={archive.clubId}/></ClubScope>;
   else if(club)page=<ClubRoute clubId={club.clubId}/>;
   else if(path==='/search')page=<SearchPage/>;
   else if(path==='/notifications')page=<NotificationsPage/>;
@@ -81,6 +88,9 @@ function Shell(){
   else page=<UnknownRoute/>;
 
   const currentPath=a.activeClubId?`/clubs/${a.activeClubId}`:'/clubs';
+  // One primary section is active at a time so both navs can show where the reader is.
+  const section:'club'|'find'|'me'|null=path==='/search'?'find':path==='/me'||path.startsWith('/me/')?'me':path==='/'||path.startsWith('/clubs')||path.startsWith('/join/')?'club':null;
+  const navState=(key:typeof section)=>({className:section===key?'current-nav':undefined,'aria-current':section===key?('page' as const):undefined});
   async function clearNotifications(){
     if(!a.user||!a.unreadNotifications)return;
     setClearingNotifications(true);
@@ -100,24 +110,24 @@ function Shell(){
         </div>}
       </div>
       <nav className="desktop-nav" aria-label="Primary">
-        <button className="current-nav" onClick={()=>navigate(currentPath)}><BookOpen/><span>Club</span></button>
-        <button onClick={()=>navigate('/search')}>Find</button>
+        <button {...navState('club')} onClick={()=>navigate(currentPath)}><BookOpen/><span>Club</span></button>
+        <button {...navState('find')} onClick={()=>navigate('/search')}>Find</button>
       </nav>
       <div className="global-actions">
         <div className="notification-menu-wrap">
           <button className="icon-button notification-button" onClick={()=>{setNotificationMenuOpen(v=>!v);setClubMenuOpen(false)}} aria-expanded={notificationMenuOpen} aria-label={`Notifications${a.unreadNotifications?` · ${a.unreadNotifications} unread`:''}`}><Bell/>{a.unreadNotifications>0&&<span className="notification-badge">{a.unreadNotifications>9?'9+':a.unreadNotifications}</span>}</button>
           {notificationMenuOpen&&<div className="notification-quick-menu" role="menu"><div><b>{a.unreadNotifications?`${a.unreadNotifications} unread`:'You’re caught up'}</b><span>Notifications</span></div><button type="button" onClick={()=>{setNotificationMenuOpen(false);navigate('/notifications')}}>View notifications</button>{a.unreadNotifications>0&&<button type="button" className="mark-all-quick" disabled={clearingNotifications} onClick={()=>void clearNotifications()}>{clearingNotifications?'Marking…':'Mark all as read'}</button>}</div>}
         </div>
-        <button className="profile-chip" onClick={()=>navigate('/me')} aria-label="Open my profile"><Avatar src={a.profile?.avatarUrl} name={a.profile?.displayName}/></button>
+        <button className={`profile-chip${section==='me'?' current':''}`} onClick={()=>navigate('/me')} aria-label="Open my profile" aria-current={section==='me'?'page':undefined}><Avatar src={a.profile?.avatarUrl} name={a.profile?.displayName}/></button>
       </div>
     </header>
     {a.offline&&<div className="offline-banner">Offline · showing your last saved club.</div>}
     <main><Suspense fallback={<BootScreen message="Opening your clubs…"/>}>{page}</Suspense></main>
-    <Suspense fallback={null}><QuickPassageCapture/></Suspense>
+    {(club||book)&&<Suspense fallback={null}><QuickPassageCapture/></Suspense>}
     <nav className="mobile-nav" aria-label="Primary">
-      <button onClick={()=>navigate(currentPath)}><BookOpen/><span>Club</span></button>
-      <button onClick={()=>navigate('/search')}><Search/><span>Find</span></button>
-      <button onClick={()=>navigate('/me')}><Avatar className="nav-avatar" src={a.profile?.avatarUrl} name={a.profile?.displayName}/><span>Me</span></button>
+      <button {...navState('club')} onClick={()=>navigate(currentPath)}><BookOpen/><span>Club</span></button>
+      <button {...navState('find')} onClick={()=>navigate('/search')}><Search/><span>Find</span></button>
+      <button {...navState('me')} onClick={()=>navigate('/me')}><Avatar className="nav-avatar" src={a.profile?.avatarUrl} name={a.profile?.displayName}/><span>Me</span></button>
     </nav>
   </div>;
 }

@@ -279,16 +279,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   };
 
   return (
-
-
-    
     <div className="auth-page">
       <div className="auth-art" aria-hidden="true">
-        <img
-          src = "/login-photo.jpg"
-          alt = " "
-          className = "auth-photo"
-          />
+        <img src="/login-photo.jpg" alt="" className="auth-photo" />
       </div>
 
       <section className="auth-panel">
@@ -312,7 +305,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             <button type="button" className="auth-back" onClick={resetToWelcome}><ArrowLeft size={18} /> Back</button>
             <p className="auth-kicker">Start with you</p>
             <h1>Create your account.</h1>
-            <p className="auth-form-intro">Build your bookshelf + join or start a club next.</p>
+            <p className="auth-form-intro">Set up your shelf, then start a club or join one with an invite.</p>
 
             <label htmlFor="display-name">Your name</label>
             <input id="display-name" autoComplete="name" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Alex Morgan" />
@@ -322,12 +315,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
             <label htmlFor="signup-password">Password</label>
             <div className="password-field">
-              <input id="signup-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="6+ characters" />
+              <input id="signup-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 12 characters" aria-describedby="password-hint" minLength={12} />
               <button type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button>
             </div>
+            <small id="password-hint" className="auth-password-hint">Use 12 or more characters. A short phrase works well.</small>
 
             <TurnstileWidget onToken={setCaptchaToken} />
-            {error && <p className="auth-error">{error}</p>}
+            {error && <p className="auth-error" role="alert">{error}</p>}
             <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Creating account…' : 'Create account'}</button>
             <button type="button" className="auth-secondary oauth-button" onClick={() => void continueWithGoogle()} disabled={loading}>
               <GoogleMark />
@@ -353,7 +347,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             </div>
 
             <TurnstileWidget onToken={setCaptchaToken} />
-            {error && <p className="auth-error">{error}</p>}
+            {error && <p className="auth-error" role="alert">{error}</p>}
             <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'}</button>
             <button type="button" className="auth-inline-link" onClick={() => { setMode('forgot'); setError(''); setMessage(''); }}>Forgot password?</button>
             <button type="button" className="auth-inline-link" onClick={() => { setMode('signup'); setError(''); setMessage(''); }}>New here? Create an account</button>
@@ -364,12 +358,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           <form className="auth-form" onSubmit={sendResetLink}>
             <button type="button" className="auth-back" onClick={() => { setMode('signin'); setError(''); setMessage(''); }}><ArrowLeft size={18} /> Sign in</button>
             <p className="auth-kicker">Password reset</p>
-            <h1>Check your inbox next.</h1>
+            <h1>Reset your password.</h1>
+            <p className="auth-form-intro">Enter the email you signed up with and we’ll send you a reset link.</p>
             <label htmlFor="reset-email">Email</label>
             <input id="reset-email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
             <TurnstileWidget onToken={setCaptchaToken} />
-            {error && <p className="auth-error">{error}</p>}
-            {message && <p className="auth-success">{message}</p>}
+            {error && <p className="auth-error" role="alert">{error}</p>}
+            {message && <p className="auth-success" role="status">{message}</p>}
             <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Sending…' : 'Send reset link'}</button>
           </form>
         )}
@@ -380,11 +375,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             <h1>Choose a new password.</h1>
             <label htmlFor="new-password">Password</label>
             <div className="password-field">
-              <input id="new-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="6+ characters" />
+              <input id="new-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 12 characters" aria-describedby="password-hint" minLength={12} />
               <button type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button>
             </div>
-            {error && <p className="auth-error">{error}</p>}
-            {message && <p className="auth-success">{message}</p>}
+            <small id="password-hint" className="auth-password-hint">Use 12 or more characters.</small>
+            {error && <p className="auth-error" role="alert">{error}</p>}
+            {message && <p className="auth-success" role="status">{message}</p>}
             <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Saving…' : 'Save new password'}</button>
           </form>
         )}
@@ -397,8 +393,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             <p className="auth-confirmation-copy">We sent a confirmation link to <strong className="auth-email-address">{email}</strong>.</p>
             <p className="auth-confirmation-detail">Open the link to activate your account, then come back to sign in.</p>
             <TurnstileWidget key={captchaNonce} onToken={setCaptchaToken} />
-            {error && <p className="auth-error">{error}</p>}
-            {message && <p className="auth-success">{message}</p>}
+            {error && <p className="auth-error" role="alert">{error}</p>}
+            {message && <p className="auth-success" role="status">{message}</p>}
             <div className="auth-confirmation-actions">
               <button className="primary auth-primary auth-confirmation-action" onClick={() => setMode('signin')}>Back to sign in</button>
               <button className="auth-confirmation-resend" type="button" onClick={resendVerification} disabled={loading}>{loading ? 'Sending…' : 'Resend verification email'}</button>

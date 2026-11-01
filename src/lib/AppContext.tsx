@@ -11,7 +11,10 @@ type User = { id: string; email?: string; user_metadata?: { display_name?: strin
 
 function cloudWorkspace(raw:any, club:Club):Workspace {
   const book=(row:any)=>({id:String(row.id),title:String(row.title||'Untitled'),author:String(row.author||'Unknown author'),coverUrl:row.cover_url||undefined,description:row.description||undefined,pages:Number(row.pages)||undefined,year:Number(row.published_year)||undefined,isbn:row.isbn||undefined,subjects:Array.isArray(row.subjects)?row.subjects:[]});
-  const clubBook=(row:any)=>({id:String(row.id),clubId:club.id,book:book(row),status:String(row.status||'suggested'),startDate:row.start_date||undefined,targetFinishDate:row.target_finish_date||undefined,totalChapters:Number(row.total_chapters)||undefined,totalPages:Number(row.total_pages)||undefined});
+  // Keep idea attribution (books.created_by) so "Your picks" and "Suggested by" reflect the real member.
+  const memberById=new Map<string,any>((raw.members||[]).map((member:any)=>[String(member.user_id),member]));
+  const suggestedBy=(row:any)=>{const id=row.created_by?String(row.created_by):'';if(!id)return undefined;const member=memberById.get(id);return {id,displayName:String(member?.name||'Reader'),username:member?.username||undefined,avatarUrl:cloudAssetUrl(member?.image||member?.style?.avatarUrl)}};
+  const clubBook=(row:any)=>({id:String(row.id),clubId:club.id,book:book(row),status:String(row.status||'suggested'),suggestedBy:suggestedBy(row),startDate:row.start_date||undefined,targetFinishDate:row.target_finish_date||undefined,totalChapters:Number(row.total_chapters)||undefined,totalPages:Number(row.total_pages)||undefined});
   const current=raw.currentBook?clubBook(raw.currentBook):undefined;
   const savedMeetingPostIds = new Set((raw.meetingQuestions || []).map((question:any) => String(question.post_id || '')).filter(Boolean));
   const phase = current
