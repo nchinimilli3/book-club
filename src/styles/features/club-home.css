@@ -470,7 +470,7 @@
   .editorial-activity article:first-child{border-top:0;padding-top:0}
 }
 @media(max-width:700px){
-  .club-home.editorial-home{margin-inline:0;padding:0 16px calc(92px + env(safe-area-inset-bottom));overflow-x:hidden;--page-gutter:16px}
+  .club-home.editorial-home{margin-inline:0;padding:0 16px calc(92px + env(safe-area-inset-bottom));overflow-x:clip;--page-gutter:16px}
   .club-home.editorial-home::before{background:var(--home-surface)}
   .editorial-home .club-masthead-hero{min-height:196px;height:196px;margin:0 -16px;padding:22px 20px;border-radius:0;background-position:center}
   .editorial-home .club-masthead-copy>h1{font-size:clamp(38px,12vw,48px);line-height:.95;max-width:calc(100vw - 112px);overflow-wrap:normal}

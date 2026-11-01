@@ -861,7 +861,7 @@
   .header-club-switcher{padding-inline:12px}
 }
 @media(max-width:700px){
-  .reading-room{padding-left:16px;padding-right:16px;overflow-x:hidden}
+  .reading-room{padding-left:16px;padding-right:16px;overflow-x:clip}
   .reading-room .reading-section{padding-inline:0}
   .reading-room .reading-tabs{
     display:flex;
