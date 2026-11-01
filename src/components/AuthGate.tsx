@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { ArrowLeft, Eye, EyeOff, MailCheck } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, Eye, EyeOff, MailCheck } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from '@book-club/supabase';
 import { BootScreen } from './BootScreen';
 import { cloudApi } from '../lib/cloudApi';
@@ -86,6 +86,16 @@ function GoogleMark() {
     </svg>
   );
 }
+
+function AuthError({ children }: { children: React.ReactNode }) {
+  return <p className="auth-error" role="alert"><AlertCircle size={16} aria-hidden="true" /><span>{children}</span></p>;
+}
+
+function AuthSuccess({ children }: { children: React.ReactNode }) {
+  return <p className="auth-success" role="status"><CheckCircle2 size={16} aria-hidden="true" /><span>{children}</span></p>;
+}
+
+const emailInputProps = { type: 'email', inputMode: 'email', autoComplete: 'email', autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false } as const;
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | { user: { id: string; email: string; name: string } } | null>(null);
@@ -271,24 +281,32 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     setPassword(''); setMessage('Password updated.'); setMode('welcome');
   }
 
-  const resetToWelcome = () => {
-    setMode('welcome');
+  const goTo = (next: Mode) => {
+    setMode(next);
     setError('');
     setMessage('');
+    setShowPassword(false);
+  };
+
+  const resetToWelcome = () => {
+    goTo('welcome');
     setPassword('');
   };
 
+  const editEmail = (value: string) => { setEmail(value); if (error) setError(''); };
+  const editPassword = (value: string) => { setPassword(value); if (error) setError(''); };
+  const invalid = error ? true : undefined;
+
+  const passwordToggle = (
+    <button type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword}>
+      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+    </button>
+  );
+
   return (
-
-
-    
     <div className="auth-page">
       <div className="auth-art" aria-hidden="true">
-        <img
-          src = "/login-photo.jpg"
-          alt = " "
-          className = "auth-photo"
-          />
+        <img src="/login-photo.jpg" alt="" className="auth-photo" decoding="async" fetchPriority="high" />
       </div>
 
       <section className="auth-panel">
@@ -296,95 +314,103 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           <div className="auth-welcome">
             <h1>Your book club,<br /><em>all in one place.</em></h1>
             <p className="auth-intro">Choose what to read next, keep notes as you go, and plan the next meeting.</p>
+            {message && <AuthSuccess>{message}</AuthSuccess>}
             <div className="auth-actions">
-              <button className="primary auth-primary" onClick={() => setMode('signup')}>Create an account</button>
+              <button className="primary auth-primary" onClick={() => goTo('signup')}>Create an account</button>
               <button className="auth-secondary oauth-button" onClick={() => void continueWithGoogle()} disabled={loading}>
                 <GoogleMark />
                 <span>Continue with Google</span>
               </button>
-              <button className="auth-secondary" onClick={() => setMode('signin')}>I already have an account</button>
+              <button className="auth-secondary" onClick={() => goTo('signin')}>I already have an account</button>
             </div>
           </div>
         )}
 
         {mode === 'signup' && (
-          <form className="auth-form" onSubmit={createAccount}>
+          <form className="auth-form" onSubmit={createAccount} noValidate aria-busy={loading}>
             <button type="button" className="auth-back" onClick={resetToWelcome}><ArrowLeft size={18} /> Back</button>
             <p className="auth-kicker">Start with you</p>
             <h1>Create your account.</h1>
-            <p className="auth-form-intro">Build your bookshelf + join or start a club next.</p>
+            <p className="auth-form-intro">Build your bookshelf, then start a club or join one.</p>
 
             <label htmlFor="display-name">Your name</label>
-            <input id="display-name" autoComplete="name" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Alex Morgan" />
+            <input id="display-name" autoComplete="name" autoCapitalize="words" value={displayName} onChange={e => { setDisplayName(e.target.value); if (error) setError(''); }} placeholder="Alex Morgan" />
 
             <label htmlFor="signup-email">Email</label>
-            <input id="signup-email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
+            <input id="signup-email" {...emailInputProps} value={email} onChange={e => editEmail(e.target.value)} placeholder="you@example.com" />
 
             <label htmlFor="signup-password">Password</label>
             <div className="password-field">
-              <input id="signup-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="6+ characters" />
-              <button type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button>
+              <input id="signup-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={12} aria-describedby="signup-password-hint" value={password} onChange={e => editPassword(e.target.value)} placeholder="At least 12 characters" />
+              {passwordToggle}
             </div>
+            <p className="auth-hint" id="signup-password-hint">Use 12 or more characters.</p>
 
             <TurnstileWidget onToken={setCaptchaToken} />
-            {error && <p className="auth-error">{error}</p>}
+            {error && <AuthError>{error}</AuthError>}
             <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Creating account…' : 'Create account'}</button>
+            <div className="auth-divider" aria-hidden="true">or</div>
             <button type="button" className="auth-secondary oauth-button" onClick={() => void continueWithGoogle()} disabled={loading}>
               <GoogleMark />
               <span>Continue with Google</span>
             </button>
-            <button type="button" className="auth-inline-link" onClick={() => { setMode('signin'); setError(''); }}>Already have an account? Sign in</button>
+            <p className="auth-switch">Already have an account? <button type="button" className="auth-inline-link" onClick={() => goTo('signin')}>Sign in</button></p>
           </form>
         )}
 
         {mode === 'signin' && (
-          <form className="auth-form" onSubmit={signIn}>
+          <form className="auth-form" onSubmit={signIn} noValidate aria-busy={loading}>
             <button type="button" className="auth-back" onClick={resetToWelcome}><ArrowLeft size={18} /> Back</button>
             <p className="auth-kicker">Welcome back</p>
             <h1>Open your shelf.</h1>
 
             <label htmlFor="signin-email">Email</label>
-            <input id="signin-email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
+            <input id="signin-email" {...emailInputProps} aria-invalid={invalid} value={email} onChange={e => editEmail(e.target.value)} placeholder="you@example.com" />
 
-            <label htmlFor="signin-password">Password</label>
+            <div className="auth-label-row">
+              <label htmlFor="signin-password">Password</label>
+              <button type="button" className="auth-inline-link" onClick={() => goTo('forgot')}>Forgot password?</button>
+            </div>
             <div className="password-field">
-              <input id="signin-password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Your password" />
-              <button type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button>
+              <input id="signin-password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" aria-invalid={invalid} value={password} onChange={e => editPassword(e.target.value)} placeholder="Your password" />
+              {passwordToggle}
             </div>
 
             <TurnstileWidget onToken={setCaptchaToken} />
-            {error && <p className="auth-error">{error}</p>}
+            {error && <AuthError>{error}</AuthError>}
+            {message && <AuthSuccess>{message}</AuthSuccess>}
             <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'}</button>
-            <button type="button" className="auth-inline-link" onClick={() => { setMode('forgot'); setError(''); setMessage(''); }}>Forgot password?</button>
-            <button type="button" className="auth-inline-link" onClick={() => { setMode('signup'); setError(''); setMessage(''); }}>New here? Create an account</button>
+            <p className="auth-switch">New here? <button type="button" className="auth-inline-link" onClick={() => goTo('signup')}>Create an account</button></p>
           </form>
         )}
 
         {mode === 'forgot' && (
-          <form className="auth-form" onSubmit={sendResetLink}>
-            <button type="button" className="auth-back" onClick={() => { setMode('signin'); setError(''); setMessage(''); }}><ArrowLeft size={18} /> Sign in</button>
+          <form className="auth-form" onSubmit={sendResetLink} noValidate aria-busy={loading}>
+            <button type="button" className="auth-back" onClick={() => goTo('signin')}><ArrowLeft size={18} /> Sign in</button>
             <p className="auth-kicker">Password reset</p>
-            <h1>Check your inbox next.</h1>
+            <h1>Forgot your password?</h1>
+            <p className="auth-form-intro">Enter your email and we’ll send you a link to choose a new one.</p>
             <label htmlFor="reset-email">Email</label>
-            <input id="reset-email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
+            <input id="reset-email" {...emailInputProps} aria-invalid={invalid} value={email} onChange={e => editEmail(e.target.value)} placeholder="you@example.com" />
             <TurnstileWidget onToken={setCaptchaToken} />
-            {error && <p className="auth-error">{error}</p>}
-            {message && <p className="auth-success">{message}</p>}
+            {error && <AuthError>{error}</AuthError>}
+            {message && <AuthSuccess>{message}</AuthSuccess>}
             <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Sending…' : 'Send reset link'}</button>
           </form>
         )}
 
         {mode === 'reset-password' && (
-          <form className="auth-form" onSubmit={updateRecoveredPassword}>
+          <form className="auth-form" onSubmit={updateRecoveredPassword} noValidate aria-busy={loading}>
             <p className="auth-kicker">New password</p>
             <h1>Choose a new password.</h1>
             <label htmlFor="new-password">Password</label>
             <div className="password-field">
-              <input id="new-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="6+ characters" />
-              <button type="button" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}</button>
+              <input id="new-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={12} aria-describedby="new-password-hint" aria-invalid={invalid} value={password} onChange={e => editPassword(e.target.value)} placeholder="At least 12 characters" />
+              {passwordToggle}
             </div>
-            {error && <p className="auth-error">{error}</p>}
-            {message && <p className="auth-success">{message}</p>}
+            <p className="auth-hint" id="new-password-hint">Use 12 or more characters.</p>
+            {error && <AuthError>{error}</AuthError>}
+            {message && <AuthSuccess>{message}</AuthSuccess>}
             <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Saving…' : 'Save new password'}</button>
           </form>
         )}
@@ -397,10 +423,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             <p className="auth-confirmation-copy">We sent a confirmation link to <strong className="auth-email-address">{email}</strong>.</p>
             <p className="auth-confirmation-detail">Open the link to activate your account, then come back to sign in.</p>
             <TurnstileWidget key={captchaNonce} onToken={setCaptchaToken} />
-            {error && <p className="auth-error">{error}</p>}
-            {message && <p className="auth-success">{message}</p>}
+            {error && <AuthError>{error}</AuthError>}
+            {message && <AuthSuccess>{message}</AuthSuccess>}
             <div className="auth-confirmation-actions">
-              <button className="primary auth-primary auth-confirmation-action" onClick={() => setMode('signin')}>Back to sign in</button>
+              <button className="primary auth-primary auth-confirmation-action" onClick={() => goTo('signin')}>Back to sign in</button>
               <button className="auth-confirmation-resend" type="button" onClick={resendVerification} disabled={loading}>{loading ? 'Sending…' : 'Resend verification email'}</button>
             </div>
           </div>
