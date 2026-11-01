@@ -61,3 +61,16 @@ The split was generated from the canonical deep-refactor stylesheet. A selector/
 - 0 same-context duplicate selector groups outside the protected acrylic/shelf boundary
 
 The CSS architecture audit now scans all owned files instead of assuming one `system.css` file.
+
+## Keeping the cascade clean
+
+`npm run audit:css` fails if the same selector is defined twice in the same context (base, or the same media query) outside the protected acrylic/shelf CSS.
+
+`npm run css:dedupe` fixes that automatically without changing how anything renders:
+
+- It removes declarations that can never win: the identical selector sets the same property again later, or sets it `!important`, in the same or a broader context (`base` covers every media query; `max-width:900px` covers `max-width:700px`).
+- It merges duplicate copies of a selector only when no rule between them could change the outcome. That means no rule setting an overlapping property at the same specificity and importance, on an element both selectors could match. Which classes can share an element is read from `className` attributes in `src/**/*.tsx`. Dynamic class names count as "could be anything".
+- It never drops an older-browser fallback that a modern value (`dvh`, `color-mix()`, …) replaces.
+- It never touches `shelves.locked.css` or the acrylic shelf selectors.
+
+Run it with `-- --dry` to see what it would change. If it reports a group it can't merge, it prints the exact rule in the way. Resolve that one by hand.

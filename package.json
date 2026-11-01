@@ -12,6 +12,7 @@
     "test:release": "tsc -b --pretty false && node scripts/smoke.mjs && node scripts/release-audit.mjs && node scripts/audit-contract.mjs && node --check worker/index.js && node scripts/audit-ui-primitives.mjs",
     "test:ui": "node scripts/audit-ui-primitives.mjs",
     "audit:css": "node scripts/audit-css-architecture.mjs",
+    "css:dedupe": "node scripts/css-dedupe.cjs",
     "worker:next:dev": "wrangler dev --config worker/d1/wrangler.toml --local",
     "preworker:next:dev": "wrangler d1 migrations apply book-club-preview --local --config worker/d1/wrangler.toml",
     "worker:next:setup": "wrangler d1 migrations apply book-club-preview --local --config worker/d1/wrangler.toml",

@@ -64,16 +64,6 @@
 
 .notification-item.is-read .notification-icon{opacity:.68}
 
-@media(max-width:720px){
-  .notification-list{border-radius:14px}
-}
-
-@media(max-width:720px){.notification-line{gap:8px}
-}
-
-@media(max-width:720px){.notification-body{font-size:13px}
-}
-
 .notifications-page{max-width:960px}
 
 .notifications-title{align-items:center;margin-bottom:24px}
@@ -111,9 +101,6 @@
   .notification-list>.notification-item{grid-template-columns:7px 38px minmax(0,1fr);padding:14px 12px;gap:10px}
 }
 
-@media(max-width:720px){.notification-icon{width:36px;height:36px}
-}
-
 .notification-icon{color:#514c47;width:42px;height:42px;display:grid;place-items:center;overflow:hidden;border-radius:8px;background:#edf1f5}
 
 .notification-icon img{display:block;width:100%;height:100%;object-fit:cover}
@@ -128,12 +115,6 @@
 
 @media(max-width:700px){
   .notification-list>.notification-item.has-book-cover{grid-template-columns:7px 40px minmax(0,1fr);gap:10px}
-}
-
-@media(max-width:700px){.notification-icon.notification-book-cover{width:34px;height:51px}
-}
-
-@media(max-width:700px){.notification-icon.notification-book-cover img{width:34px;height:51px}
 }
 
 .notification-icon.notification-book-cover{width:38px;height:57px;align-self:center;box-shadow:none;opacity:1!important;overflow:hidden;background:#ecebe7;border-radius:2px}

@@ -19,7 +19,6 @@
 .sticker-tray-empty{grid-column:1/-1;color:var(--muted);font-size:13px;padding:10px 2px}
 .sticker-tray-foot button{border:0;background:transparent;padding:4px 0;color:var(--muted);font-weight:650;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
 @media(max-width:560px){
-  .sticker-placed{width:96px;height:96px}
   .sticker-toolbar{transform:translate(-50%,-126%);overflow-x:auto;max-width:94vw}
 }
 .sticker-placed{position:absolute;border:0;background:none;padding:0;display:grid;place-items:center;transform-origin:center;filter:drop-shadow(0 9px 13px rgba(36,30,26,.18));touch-action:none;will-change:left,top,transform;width:118px;height:118px}
@@ -27,11 +26,6 @@
 }
 .sticker-tray-item>span>img{width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;object-position:center}
 .sticker-tray-item>span>svg{width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;object-position:center}
-@media(min-width:721px){.sticker-tray-head{display:grid;grid-template-columns:1fr auto auto;gap:6px}}
-@media(min-width:721px){.sticker-category-row{overflow-x:auto;white-space:nowrap}}
-@media(min-width:721px){.sticker-tray-foot{display:none}}
-@media(max-width:720px){.sticker-tray-head{min-height:30px}}
-@media(max-width:720px){.sticker-tray-foot{display:none}}
 @media(max-width:720px){.sticker-tray:has(.sticker-tray-search input:focus) .sticker-tray-grid{height:53px;max-height:53px;grid-template-rows:51px}}
 @media(max-width:720px){.sticker-tray:has(.sticker-tray-search input:focus) .sticker-tray-item{height:51px;grid-template-rows:39px 8px}}
 @media(max-width:720px){.sticker-tray:has(.sticker-tray-search input:focus) .sticker-tray-item>span{height:39px}}
