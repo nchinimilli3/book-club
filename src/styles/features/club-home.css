@@ -607,14 +607,11 @@
   .club-home .ballot-preference-list .ballot-book b{font-size:16px}
   .club-home .ballot-preference-list .rank-picker{margin:0!important}
   .club-home .ballot-preference-list .rank-picker button{width:auto;min-width:104px;min-height:44px;padding:0 12px;white-space:nowrap}
-  /* Rating phase: cover beside the title so "Rate the book" is on the first screen. */
-  .club-home .book-hero.ritual-rating{display:grid!important;grid-template-columns:104px minmax(0,1fr)!important;align-items:start;gap:16px;margin:20px 0 0!important;padding:0!important;min-height:0!important;width:auto!important}
-  .club-home .book-hero.ritual-rating>.hero-cover-wrap{grid-column:1;grid-row:1;margin:0!important;padding:0!important;min-height:0!important;width:auto!important;background:none!important}
-  .club-home .book-hero.ritual-rating>.hero-cover-wrap .hero-cover-button{width:104px!important;margin:0!important;transform:none!important}
-  .club-home .book-hero.ritual-rating>.hero-cover-wrap img{width:104px!important;height:auto!important;aspect-ratio:2/3}
-  .club-home .book-hero.ritual-rating>.hero-copy{grid-column:2;grid-row:1;text-align:left!important;padding:0!important;margin:0!important;width:auto!important}
-  .club-home .book-hero.ritual-rating>.hero-copy h2{font-size:clamp(30px,9vw,38px)!important;margin:4px 0 0!important}
-  .club-home .book-hero.ritual-rating .hero-actions{display:grid!important;gap:8px;margin-top:14px!important;width:100%!important}
-  .club-home .book-hero.ritual-rating .hero-actions>button{width:100%!important;justify-content:center}
+  /* Rating phase keeps the full-size cover; trimming the space around it lets
+     "Rate the book" land on the first phone screen. */
+  .club-home .book-hero.ritual-rating{margin-top:10px!important}
+  .club-home .book-hero.ritual-rating>.hero-cover-wrap{padding-block:6px!important;min-height:0!important}
+  .club-home .book-hero.ritual-rating>.hero-copy{padding-top:8px!important}
+  .club-home .book-hero.ritual-rating>.hero-copy .phase{margin-top:0!important}
 }
 .editorial-meta-action:disabled{cursor:default;opacity:1}
