@@ -95,6 +95,15 @@ function AuthSuccess({ children }: { children: React.ReactNode }) {
   return <p className="auth-success" role="status"><CheckCircle2 size={16} aria-hidden="true" /><span>{children}</span></p>;
 }
 
+function BrandMark({ compact = false }: { compact?: boolean }) {
+  return (
+    <span className={`auth-brand${compact ? ' auth-brand-compact' : ''}`}>
+      <span className="auth-brand-mark" aria-hidden="true">BC</span>
+      <span className="auth-brand-name">Book Club</span>
+    </span>
+  );
+}
+
 const emailInputProps = { type: 'email', inputMode: 'email', autoComplete: 'email', autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false } as const;
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
@@ -303,135 +312,164 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     </button>
   );
 
+  const backButton = (target: Mode, label: string) => (
+    <button type="button" className="auth-back" onClick={() => (target === 'welcome' ? resetToWelcome() : goTo(target))} aria-label={label}>
+      <ArrowLeft size={20} strokeWidth={2} />
+    </button>
+  );
+
+  const formHead = (target: Mode | null, label = 'Back') => (
+    <header className="auth-form-head">
+      {target ? backButton(target, label) : <span className="auth-head-spacer" />}
+      <BrandMark compact />
+      <span className="auth-head-spacer" />
+    </header>
+  );
+
+  const googleButton = (
+    <button type="button" className="auth-button auth-google" onClick={() => void continueWithGoogle()} disabled={loading}>
+      <GoogleMark />
+      <span>Continue with Google</span>
+    </button>
+  );
+
   return (
-    <div className="auth-page">
-      <div className="auth-art" aria-hidden="true">
+    <div className={`auth-page auth-mode-${mode}`}>
+      <div className="auth-art">
         <img src="/login-photo.jpg" alt="" className="auth-photo" decoding="async" fetchPriority="high" />
+        <div className="auth-art-brand"><BrandMark /></div>
+        <p className="auth-art-caption" aria-hidden="true">Read together.<br /><em>Talk it through.</em></p>
       </div>
 
-      <section className="auth-panel">
+      <main className="auth-panel">
         {mode === 'welcome' && (
-          <div className="auth-welcome">
-            <h1>Your book club,<br /><em>all in one place.</em></h1>
-            <p className="auth-intro">Choose what to read next, keep notes as you go, and plan the next meeting.</p>
+          <div className="auth-sheet auth-welcome">
+            <h1>Your book club, <em>all in one place.</em></h1>
+            <p className="auth-lede">Pick what to read next, keep notes as you go, and plan the next meeting.</p>
             {message && <AuthSuccess>{message}</AuthSuccess>}
+            {error && <AuthError>{error}</AuthError>}
             <div className="auth-actions">
-              <button className="primary auth-primary" onClick={() => goTo('signup')}>Create an account</button>
-              <button className="auth-secondary oauth-button" onClick={() => void continueWithGoogle()} disabled={loading}>
-                <GoogleMark />
-                <span>Continue with Google</span>
-              </button>
-              <button className="auth-secondary" onClick={() => goTo('signin')}>I already have an account</button>
+              <button className="auth-button auth-primary" onClick={() => goTo('signup')}>Create an account</button>
+              {googleButton}
             </div>
+            <p className="auth-switch">Already a member? <button type="button" className="auth-link" onClick={() => goTo('signin')}>Sign in</button></p>
           </div>
         )}
 
         {mode === 'signup' && (
-          <form className="auth-form" onSubmit={createAccount} noValidate aria-busy={loading}>
-            <button type="button" className="auth-back" onClick={resetToWelcome}><ArrowLeft size={18} /> Back</button>
-            <p className="auth-kicker">Start with you</p>
-            <h1>Create your account.</h1>
-            <p className="auth-form-intro">Build your bookshelf, then start a club or join one.</p>
+          <form className="auth-sheet auth-form" onSubmit={createAccount} noValidate aria-busy={loading}>
+            {formHead('welcome')}
+            <h1>Create your account</h1>
+            <p className="auth-lede">Start your bookshelf, then start a club or join one.</p>
 
-            <label htmlFor="display-name">Your name</label>
-            <input id="display-name" autoComplete="name" autoCapitalize="words" value={displayName} onChange={e => { setDisplayName(e.target.value); if (error) setError(''); }} placeholder="Alex Morgan" />
-
-            <label htmlFor="signup-email">Email</label>
-            <input id="signup-email" {...emailInputProps} value={email} onChange={e => editEmail(e.target.value)} placeholder="you@example.com" />
-
-            <label htmlFor="signup-password">Password</label>
-            <div className="password-field">
-              <input id="signup-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={12} aria-describedby="signup-password-hint" value={password} onChange={e => editPassword(e.target.value)} placeholder="At least 12 characters" />
-              {passwordToggle}
+            <div className="auth-field">
+              <label htmlFor="display-name">Name</label>
+              <input id="display-name" autoComplete="name" autoCapitalize="words" value={displayName} onChange={e => { setDisplayName(e.target.value); if (error) setError(''); }} placeholder="Alex Morgan" />
             </div>
-            <p className="auth-hint" id="signup-password-hint">Use 12 or more characters.</p>
+            <div className="auth-field">
+              <label htmlFor="signup-email">Email</label>
+              <input id="signup-email" {...emailInputProps} value={email} onChange={e => editEmail(e.target.value)} placeholder="you@example.com" />
+            </div>
+            <div className="auth-field">
+              <label htmlFor="signup-password">Password</label>
+              <div className="password-field">
+                <input id="signup-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={12} aria-describedby="signup-password-hint" value={password} onChange={e => editPassword(e.target.value)} placeholder="At least 12 characters" />
+                {passwordToggle}
+              </div>
+              <p className="auth-hint" id="signup-password-hint">Use 12 or more characters.</p>
+            </div>
 
             <TurnstileWidget onToken={setCaptchaToken} />
             {error && <AuthError>{error}</AuthError>}
-            <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Creating account…' : 'Create account'}</button>
+            <button className="auth-button auth-primary auth-submit" type="submit" disabled={loading}>{loading ? 'Creating account…' : 'Create account'}</button>
             <div className="auth-divider" aria-hidden="true">or</div>
-            <button type="button" className="auth-secondary oauth-button" onClick={() => void continueWithGoogle()} disabled={loading}>
-              <GoogleMark />
-              <span>Continue with Google</span>
-            </button>
-            <p className="auth-switch">Already have an account? <button type="button" className="auth-inline-link" onClick={() => goTo('signin')}>Sign in</button></p>
+            {googleButton}
+            <p className="auth-switch">Already a member? <button type="button" className="auth-link" onClick={() => goTo('signin')}>Sign in</button></p>
           </form>
         )}
 
         {mode === 'signin' && (
-          <form className="auth-form" onSubmit={signIn} noValidate aria-busy={loading}>
-            <button type="button" className="auth-back" onClick={resetToWelcome}><ArrowLeft size={18} /> Back</button>
-            <p className="auth-kicker">Welcome back</p>
-            <h1>Open your shelf.</h1>
+          <form className="auth-sheet auth-form" onSubmit={signIn} noValidate aria-busy={loading}>
+            {formHead('welcome')}
+            <h1>Welcome back</h1>
+            <p className="auth-lede">Sign in to pick up where your club left off.</p>
 
-            <label htmlFor="signin-email">Email</label>
-            <input id="signin-email" {...emailInputProps} aria-invalid={invalid} value={email} onChange={e => editEmail(e.target.value)} placeholder="you@example.com" />
-
-            <div className="auth-label-row">
-              <label htmlFor="signin-password">Password</label>
-              <button type="button" className="auth-inline-link" onClick={() => goTo('forgot')}>Forgot password?</button>
+            <div className="auth-field">
+              <label htmlFor="signin-email">Email</label>
+              <input id="signin-email" {...emailInputProps} aria-invalid={invalid} value={email} onChange={e => editEmail(e.target.value)} placeholder="you@example.com" />
             </div>
-            <div className="password-field">
-              <input id="signin-password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" aria-invalid={invalid} value={password} onChange={e => editPassword(e.target.value)} placeholder="Your password" />
-              {passwordToggle}
+            <div className="auth-field">
+              <div className="auth-label-row">
+                <label htmlFor="signin-password">Password</label>
+                <button type="button" className="auth-link auth-link-quiet" onClick={() => goTo('forgot')}>Forgot password?</button>
+              </div>
+              <div className="password-field">
+                <input id="signin-password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" aria-invalid={invalid} value={password} onChange={e => editPassword(e.target.value)} placeholder="Your password" />
+                {passwordToggle}
+              </div>
             </div>
 
             <TurnstileWidget onToken={setCaptchaToken} />
             {error && <AuthError>{error}</AuthError>}
             {message && <AuthSuccess>{message}</AuthSuccess>}
-            <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'}</button>
-            <p className="auth-switch">New here? <button type="button" className="auth-inline-link" onClick={() => goTo('signup')}>Create an account</button></p>
+            <button className="auth-button auth-primary auth-submit" type="submit" disabled={loading}>{loading ? 'Signing in…' : 'Sign in'}</button>
+            <div className="auth-divider" aria-hidden="true">or</div>
+            {googleButton}
+            <p className="auth-switch">New here? <button type="button" className="auth-link" onClick={() => goTo('signup')}>Create an account</button></p>
           </form>
         )}
 
         {mode === 'forgot' && (
-          <form className="auth-form" onSubmit={sendResetLink} noValidate aria-busy={loading}>
-            <button type="button" className="auth-back" onClick={() => goTo('signin')}><ArrowLeft size={18} /> Sign in</button>
-            <p className="auth-kicker">Password reset</p>
-            <h1>Forgot your password?</h1>
-            <p className="auth-form-intro">Enter your email and we’ll send you a link to choose a new one.</p>
-            <label htmlFor="reset-email">Email</label>
-            <input id="reset-email" {...emailInputProps} aria-invalid={invalid} value={email} onChange={e => editEmail(e.target.value)} placeholder="you@example.com" />
+          <form className="auth-sheet auth-form" onSubmit={sendResetLink} noValidate aria-busy={loading}>
+            {formHead('signin', 'Back to sign in')}
+            <h1>Reset your password</h1>
+            <p className="auth-lede">Enter the email you signed up with and we’ll send you a reset link.</p>
+            <div className="auth-field">
+              <label htmlFor="reset-email">Email</label>
+              <input id="reset-email" {...emailInputProps} aria-invalid={invalid} value={email} onChange={e => editEmail(e.target.value)} placeholder="you@example.com" />
+            </div>
             <TurnstileWidget onToken={setCaptchaToken} />
             {error && <AuthError>{error}</AuthError>}
             {message && <AuthSuccess>{message}</AuthSuccess>}
-            <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Sending…' : 'Send reset link'}</button>
+            <button className="auth-button auth-primary auth-submit" type="submit" disabled={loading}>{loading ? 'Sending…' : 'Send reset link'}</button>
           </form>
         )}
 
         {mode === 'reset-password' && (
-          <form className="auth-form" onSubmit={updateRecoveredPassword} noValidate aria-busy={loading}>
-            <p className="auth-kicker">New password</p>
-            <h1>Choose a new password.</h1>
-            <label htmlFor="new-password">Password</label>
-            <div className="password-field">
-              <input id="new-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={12} aria-describedby="new-password-hint" aria-invalid={invalid} value={password} onChange={e => editPassword(e.target.value)} placeholder="At least 12 characters" />
-              {passwordToggle}
+          <form className="auth-sheet auth-form" onSubmit={updateRecoveredPassword} noValidate aria-busy={loading}>
+            {formHead(null)}
+            <h1>Choose a new password</h1>
+            <p className="auth-lede">Make it something you haven’t used here before.</p>
+            <div className="auth-field">
+              <label htmlFor="new-password">New password</label>
+              <div className="password-field">
+                <input id="new-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={12} aria-describedby="new-password-hint" aria-invalid={invalid} value={password} onChange={e => editPassword(e.target.value)} placeholder="At least 12 characters" />
+                {passwordToggle}
+              </div>
+              <p className="auth-hint" id="new-password-hint">Use 12 or more characters.</p>
             </div>
-            <p className="auth-hint" id="new-password-hint">Use 12 or more characters.</p>
             {error && <AuthError>{error}</AuthError>}
             {message && <AuthSuccess>{message}</AuthSuccess>}
-            <button className="primary auth-primary" type="submit" disabled={loading}>{loading ? 'Saving…' : 'Save new password'}</button>
+            <button className="auth-button auth-primary auth-submit" type="submit" disabled={loading}>{loading ? 'Saving…' : 'Save new password'}</button>
           </form>
         )}
 
         {mode === 'check-email' && (
-          <div className="auth-check-email">
-            <div className="auth-confirmation-icon" aria-hidden="true"><MailCheck size={25} strokeWidth={1.8} /></div>
-            <p className="auth-kicker">Verification email sent</p>
-            <h1>Check your inbox.</h1>
-            <p className="auth-confirmation-copy">We sent a confirmation link to <strong className="auth-email-address">{email}</strong>.</p>
-            <p className="auth-confirmation-detail">Open the link to activate your account, then come back to sign in.</p>
+          <div className="auth-sheet auth-form auth-check-email">
+            {formHead(null)}
+            <div className="auth-confirmation-icon" aria-hidden="true"><MailCheck size={24} strokeWidth={1.8} /></div>
+            <h1>Check your inbox</h1>
+            <p className="auth-lede">We sent a confirmation link to</p>
+            <p className="auth-email-address">{email}</p>
+            <p className="auth-hint auth-confirmation-detail">Open the link to activate your account, then come back to sign in. It can take a minute to arrive.</p>
             <TurnstileWidget key={captchaNonce} onToken={setCaptchaToken} />
             {error && <AuthError>{error}</AuthError>}
             {message && <AuthSuccess>{message}</AuthSuccess>}
-            <div className="auth-confirmation-actions">
-              <button className="primary auth-primary auth-confirmation-action" onClick={() => goTo('signin')}>Back to sign in</button>
-              <button className="auth-confirmation-resend" type="button" onClick={resendVerification} disabled={loading}>{loading ? 'Sending…' : 'Resend verification email'}</button>
-            </div>
+            <button className="auth-button auth-primary auth-submit" onClick={() => goTo('signin')}>Back to sign in</button>
+            <p className="auth-switch">Didn’t get it? <button className="auth-link" type="button" onClick={resendVerification} disabled={loading}>{loading ? 'Sending…' : 'Resend email'}</button></p>
           </div>
         )}
-      </section>
+      </main>
     </div>
   );
 }
