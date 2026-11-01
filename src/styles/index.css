@@ -1,4 +1,5 @@
 /* Explicit cascade order. Shared primitives load first; feature-owned styles follow. */
+@import './foundation/fonts.css';
 @import './foundation/tokens.css';
 @import './foundation/globals.css';
 @import './components/navigation.css';

@@ -2,11 +2,9 @@
    Written phone-first: base rules target a ~390px phone; min-width queries add
    the tablet and desktop split layout. */
 
-@font-face{font-family:'Instrument Serif';font-style:normal;font-weight:400;font-display:swap;src:url('/fonts/instrument-serif.woff2') format('woff2')}
-@font-face{font-family:'Instrument Serif';font-style:italic;font-weight:400;font-display:swap;src:url('/fonts/instrument-serif-italic.woff2') format('woff2')}
 
 .auth-page{
-  --auth-display:'Instrument Serif',Georgia,'Times New Roman',serif;
+  --auth-display:var(--display);
   --auth-ink:#16181b;
   --auth-muted:#5f666e;
   --auth-subtle:#8b9198;

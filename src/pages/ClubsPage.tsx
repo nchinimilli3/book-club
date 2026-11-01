@@ -1,20 +1,190 @@
-import { useState } from 'react';
-import { ArrowRight, BookOpen, Plus, UserRoundPlus } from 'lucide-react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
+import { AlertCircle, ChevronRight, Plus, Ticket, X } from 'lucide-react';
 import { useRouter } from '../lib/router';
 import { createClub, joinClub } from '@book-club/data';
 import { useApp } from '../lib/AppContext';
-import type { Tone } from '../lib/model';
+import type { Phase, Tone } from '../lib/model';
 import { cloudApi } from '../lib/cloudApi';
 
-export function ClubsPage(){
-  const a=useApp(),{navigate:nav}=useRouter();
-  const [mode,setMode]=useState<'create'|'join'|null>(null),[name,setName]=useState(''),[code,setCode]=useState(''),[tone,setTone]=useState<Tone>('rose'),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  async function create(){if(!name.trim())return;setBusy(true);try{const c:any=import.meta.env.VITE_BACKEND==='d1'?await cloudApi.createClub(name.trim()):await createClub(name.trim(),tone);const id=c.club?.id||c.id;await a.refresh();await a.selectClub(id);nav(`/clubs/${id}`)}catch(e:any){setError(e.message)}finally{setBusy(false)}}
-  async function join(){setBusy(true);try{const c:any=import.meta.env.VITE_BACKEND==='d1'?await cloudApi.joinInvite(code):await joinClub(code);await a.refresh();await a.selectClub(c.clubId||c.id);nav(`/clubs/${c.clubId||c.id}`)}catch(e:any){setError(e.message)}finally{setBusy(false)}}
-  return <div className="page clubs-page">
-    <header className="page-title clubs-page-title"><h1>Your clubs</h1><button className="primary clubs-create-button" onClick={()=>setMode('create')}><Plus/> Start a club</button></header>
-    <section className="club-index">{a.clubs.map(c=><button className={`club-index-row tone-${c.tone}`} key={c.id} onClick={()=>nav(`/clubs/${c.id}`)}><div className="club-color"/><div><h2>{c.name}</h2><p>{c.phase.replaceAll('_',' ')}</p></div><ArrowRight/></button>)}{!a.clubs.length&&<div className="clubs-empty-card"><div className="clubs-empty-mark"><BookOpen aria-hidden="true"/></div><p className="clubs-empty-kicker">A table for your next read</p><h2>No clubs yet.</h2><p>Start a private club for your favorite readers, or use an invite a friend sent you.</p><button className="secondary clubs-join-button" onClick={()=>setMode('join')}><UserRoundPlus/> Join with invite</button></div>}</section>
-    {a.clubs.length>0&&<div className="two-actions"><button className="secondary" onClick={()=>setMode('join')}>Join with invite</button></div>}
-    {mode&&<div className="modal-backdrop" onMouseDown={()=>setMode(null)}><section className="dialog" role="dialog" aria-modal="true" aria-label={mode==='create'?'Start a book club':'Join a club'} onMouseDown={e=>e.stopPropagation()}><button className="dialog-close" aria-label="Close" onClick={()=>setMode(null)}><span aria-hidden="true">×</span></button>{mode==='create'?<><h2>Start a book club</h2><label>Club name</label><input value={name} onChange={e=>setName(e.target.value)} placeholder="College Friends"/><label>Accent</label><div className="palette-row">{(['rose','olive','gold','plum','blue','clay'] as Tone[]).map(t=><button aria-label={`${t} accent`} aria-pressed={tone===t} className={`swatch ${t} ${tone===t?'selected':''}`} onClick={()=>setTone(t)} key={t}/>)}</div><button className="primary full" disabled={busy||!name.trim()} onClick={create}>{busy?'Creating…':'Create club'}</button></>:<><h2>Join a club</h2><p>Paste the invite code or the end of the invite link.</p><label>Invite</label><input value={code} onChange={e=>setCode(e.target.value)} placeholder="ABC123"/><button className="primary full" disabled={busy||!code.trim()} onClick={join}>{busy?'Joining…':'Join club'}</button></>}{error&&<p className="error-text">{error}</p>}</section></div>}
-  </div>;
+const cloudBackend = import.meta.env.VITE_BACKEND === 'd1';
+const tones: Tone[] = ['rose', 'olive', 'gold', 'plum', 'blue', 'clay'];
+
+const phaseLabel: Record<Phase, string> = {
+  setup: 'Getting started',
+  choosing: 'Choosing the next book',
+  acquiring: 'Getting copies',
+  reading: 'Reading now',
+  planning_meeting: 'Planning the meeting',
+  meeting: 'Meeting soon',
+  rating: 'Rating the book',
+  archived: 'Archived',
+  paused: 'Paused',
+};
+
+function initials(name: string) {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  return ((words[0]?.[0] || '') + (words[1]?.[0] || '')).toUpperCase() || 'BC';
+}
+
+/** Accepts a bare code or a full invite link and returns just the code. */
+function inviteCodeFrom(value: string) {
+  const trimmed = value.trim();
+  const fromLink = trimmed.match(/\/join\/([^/?#\s]+)/);
+  return fromLink ? decodeURIComponent(fromLink[1]) : trimmed;
+}
+
+type SheetMode = 'create' | 'join';
+
+export function ClubsPage() {
+  const a = useApp(), { navigate: nav } = useRouter();
+  const [mode, setMode] = useState<SheetMode | null>(null);
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [tone, setTone] = useState<Tone>('rose');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const firstName = (a.profile?.displayName || '').trim().split(/\s+/)[0];
+  const hasClubs = a.clubs.length > 0;
+
+  const open = (next: SheetMode) => { setError(''); setMode(next); };
+  const close = () => { if (!busy) setMode(null); };
+
+  async function create(event: FormEvent) {
+    event.preventDefault();
+    if (!name.trim()) return setError('Give your club a name.');
+    setBusy(true); setError('');
+    try {
+      const c: any = cloudBackend ? await cloudApi.createClub(name.trim()) : await createClub(name.trim(), tone);
+      const id = c.club?.id || c.id;
+      await a.refresh(); await a.selectClub(id); nav(`/clubs/${id}`);
+    } catch (e: any) { setError(e?.message || 'Could not create the club.'); }
+    finally { setBusy(false); }
+  }
+
+  async function join(event: FormEvent) {
+    event.preventDefault();
+    const invite = inviteCodeFrom(code);
+    if (!invite) return setError('Paste the invite code or link.');
+    setBusy(true); setError('');
+    try {
+      const c: any = cloudBackend ? await cloudApi.joinInvite(invite) : await joinClub(invite);
+      const id = c.clubId || c.id;
+      await a.refresh(); await a.selectClub(id); nav(`/clubs/${id}`);
+    } catch (e: any) { setError(e?.message || 'That invite didn’t work. Check it and try again.'); }
+    finally { setBusy(false); }
+  }
+
+  const choices = (
+    <div className="clubs-choices">
+      <button type="button" className="clubs-choice" onClick={() => open('create')}>
+        <span className="clubs-choice-icon clubs-choice-icon-primary" aria-hidden="true"><Plus size={20} strokeWidth={2.2} /></span>
+        <span className="clubs-choice-copy"><b>Start a club</b><small>Name it, invite friends, pick your first book.</small></span>
+        <ChevronRight className="clubs-chevron" size={18} aria-hidden="true" />
+      </button>
+      <button type="button" className="clubs-choice" onClick={() => open('join')}>
+        <span className="clubs-choice-icon" aria-hidden="true"><Ticket size={19} strokeWidth={2} /></span>
+        <span className="clubs-choice-copy"><b>Join with an invite</b><small>Paste the code or link a friend sent you.</small></span>
+        <ChevronRight className="clubs-chevron" size={18} aria-hidden="true" />
+      </button>
+    </div>
+  );
+
+  return (
+    <div className="page clubs-page">
+      <header className="clubs-head">
+        {hasClubs ? (
+          <>
+            <h1>Your clubs</h1>
+            <p className="clubs-lede">{a.clubs.length === 1 ? '1 club' : `${a.clubs.length} clubs`}</p>
+          </>
+        ) : (
+          <>
+            <h1>{firstName ? `Welcome, ${firstName}` : 'Welcome'}</h1>
+            <p className="clubs-lede">Clubs are private to the people you invite. Start your own, or join one a friend set up.</p>
+          </>
+        )}
+      </header>
+
+      {hasClubs && (
+        <section className="clubs-list" aria-label="Your clubs">
+          {a.clubs.map(c => (
+            <button type="button" className="clubs-row" key={c.id} onClick={() => nav(`/clubs/${c.id}`)}>
+              <span className="clubs-avatar" style={{ background: `var(--${c.tone})` }} aria-hidden="true">{initials(c.name)}</span>
+              <span className="clubs-row-copy">
+                <b>{c.name}</b>
+                <small>{phaseLabel[c.phase] || 'Getting started'}{c.id === a.activeClubId ? ' · Current' : ''}</small>
+              </span>
+              <ChevronRight className="clubs-chevron" size={18} aria-hidden="true" />
+            </button>
+          ))}
+        </section>
+      )}
+
+      <section className={`clubs-actions${hasClubs ? ' clubs-actions-secondary' : ''}`} aria-label="Add a club">
+        {hasClubs && <h2>Add another club</h2>}
+        {choices}
+      </section>
+
+      {mode && (
+        <ClubSheet title={mode === 'create' ? 'Start a club' : 'Join a club'} onClose={close}>
+          {mode === 'create' ? (
+            <form onSubmit={create} noValidate>
+              <p className="clubs-sheet-lede">You can change the name later in club settings.</p>
+              <div className="clubs-field">
+                <label htmlFor="club-name">Club name</label>
+                <input id="club-name" autoFocus autoComplete="off" autoCapitalize="words" maxLength={60} value={name} onChange={e => { setName(e.target.value); if (error) setError(''); }} placeholder="e.g. Sunday Classics" />
+              </div>
+              {!cloudBackend && (
+                <div className="clubs-field">
+                  <span className="clubs-field-label" id="club-tone-label">Colour</span>
+                  <div className="clubs-tones" role="radiogroup" aria-labelledby="club-tone-label">
+                    {tones.map(t => (
+                      <button type="button" role="radio" aria-checked={tone === t} aria-label={t} key={t} className="clubs-tone" style={{ background: `var(--${t})` }} onClick={() => setTone(t)} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {error && <p className="clubs-error" role="alert"><AlertCircle size={16} aria-hidden="true" />{error}</p>}
+              <button className="clubs-submit" type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create club'}</button>
+            </form>
+          ) : (
+            <form onSubmit={join} noValidate>
+              <p className="clubs-sheet-lede">Paste the invite code, or the whole invite link.</p>
+              <div className="clubs-field">
+                <label htmlFor="club-invite">Invite code or link</label>
+                <input id="club-invite" autoFocus autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={code} onChange={e => { setCode(e.target.value); if (error) setError(''); }} placeholder="ABC123" />
+              </div>
+              {error && <p className="clubs-error" role="alert"><AlertCircle size={16} aria-hidden="true" />{error}</p>}
+              <button className="clubs-submit" type="submit" disabled={busy}>{busy ? 'Joining…' : 'Join club'}</button>
+            </form>
+          )}
+        </ClubSheet>
+      )}
+    </div>
+  );
+}
+
+/** Bottom sheet on phones, centred dialog on larger screens. */
+function ClubSheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') closeRef.current(); };
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = overflow; previous?.focus?.(); };
+  }, []);
+  return (
+    <div className="clubs-sheet-backdrop" onMouseDown={onClose}>
+      <section className="clubs-sheet" role="dialog" aria-modal="true" aria-labelledby="clubs-sheet-title" onMouseDown={e => e.stopPropagation()}>
+        <header className="clubs-sheet-head">
+          <h2 id="clubs-sheet-title">{title}</h2>
+          <button type="button" className="clubs-sheet-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
+        </header>
+        {children}
+      </section>
+    </div>
+  );
 }
