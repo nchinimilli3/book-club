@@ -7,6 +7,7 @@ import { markAllNotificationsRead } from '@book-club/data';
 import { BootScreen } from './components/BootScreen';
 import { cloudApi } from './lib/cloudApi';
 import { Avatar } from './components/SafeImage';
+import { WelcomeIntro, shouldPlayIntro } from './components/WelcomeIntro';
 
 const ClubsPage = lazy(() => import('./pages/ClubsPage').then(module => ({ default: module.ClubsPage })));
 const ReadingRoom = lazy(() => import('./pages/ReadingRoom').then(module => ({ default: module.ReadingRoom })));
@@ -52,6 +53,10 @@ function Shell(){
   const[clubMenuOpen,setClubMenuOpen]=useState(false);
   const[notificationMenuOpen,setNotificationMenuOpen]=useState(false);
   const[clearingNotifications,setClearingNotifications]=useState(false);
+  const[introDone,setIntroDone]=useState(false);
+  const introUserId=(a.user as {id?:string}|null)?.id;
+  const[playIntro,setPlayIntro]=useState(false);
+  useEffect(()=>{if(!a.loading&&introUserId)setPlayIntro(shouldPlayIntro(introUserId))},[a.loading,introUserId]);
   useEffect(()=>{if(!clubMenuOpen&&!notificationMenuOpen)return;const close=(event:PointerEvent)=>{const target=event.target as Element;if(!target.closest('.club-switcher-wrap')&&!target.closest('.notification-menu-wrap')){setClubMenuOpen(false);setNotificationMenuOpen(false)}};document.addEventListener('pointerdown',close);return()=>document.removeEventListener('pointerdown',close)},[clubMenuOpen,notificationMenuOpen]);
   if(a.loading)return <BootScreen message="Opening your clubs…" fullViewport/>;
   if(a.error)return <div className="boot"><b>Something went wrong.</b><span>{a.error}</span><button onClick={a.refresh}>Try again</button></div>;
@@ -114,6 +119,7 @@ function Shell(){
     {a.offline&&<div className="offline-banner">Offline · showing your last saved club.</div>}
     <main><Suspense fallback={<BootScreen message="Opening your clubs…"/>}>{page}</Suspense></main>
     <Suspense fallback={null}><QuickPassageCapture/></Suspense>
+    {playIntro&&!introDone&&introUserId&&<WelcomeIntro userId={introUserId} name={a.profile?.displayName||''} onDone={()=>setIntroDone(true)}/>}
     <nav className="mobile-nav" aria-label="Primary">
       <button onClick={()=>navigate(currentPath)}><BookOpen/><span>Club</span></button>
       <button onClick={()=>navigate('/search')}><Search/><span>Find</span></button>

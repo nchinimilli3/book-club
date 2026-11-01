@@ -20,6 +20,7 @@
 @import './features/profile.css';
 @import './features/stickers.css';
 @import './features/onboarding.css';
+@import './features/welcome-intro.css';
 @import './features/notifications.css';
 @import './features/settings.css';
 @import './features/shelves.locked.css';
