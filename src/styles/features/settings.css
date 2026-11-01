@@ -142,3 +142,14 @@
     grid-template-columns:1fr;
   }
 }
+
+/* Profile fields: a consistent label-over-field rhythm, and the "@" sits inside
+   the username field instead of on its own line above it. */
+.settings-fields{display:grid;gap:16px;margin-bottom:20px}
+.settings-fields>label{display:grid;gap:7px;margin:0}
+.settings-fields>label>span{font-size:13px;font-weight:700;color:var(--ink)}
+.settings-fields input{width:100%;box-sizing:border-box}
+.settings-fields input:disabled{background:var(--paper-2);color:var(--muted);cursor:not-allowed}
+.username-input{position:relative;display:block}
+.username-input>i{position:absolute;left:13px;top:50%;transform:translateY(-50%);font-style:normal;font-weight:600;color:var(--muted);pointer-events:none}
+.username-input>input{padding-left:30px!important}

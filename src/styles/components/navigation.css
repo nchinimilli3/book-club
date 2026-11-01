@@ -55,8 +55,20 @@
 /* Fixed icon and label rows keep all three mobile tabs on the same centers. */
 @media(max-width:720px){
   .mobile-nav{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;align-items:stretch!important;height:72px!important;padding:6px 18px max(8px,env(safe-area-inset-bottom))!important}
-  .mobile-nav button{display:grid!important;grid-template-rows:24px 16px!important;align-content:center!important;justify-items:center!important;gap:3px!important;min-width:0!important;min-height:0!important;line-height:1!important}
+  .mobile-nav button{display:grid!important;grid-template-rows:24px 16px!important;align-content:center!important;justify-items:center!important;gap:3px!important;min-width:0!important;min-height:0!important;line-height:1!important;color:rgba(255,255,255,.62)!important;transition:color .15s ease}
   .mobile-nav button>svg,.mobile-nav .nav-avatar{grid-row:1;align-self:center;justify-self:center;box-sizing:border-box;width:22px!important;height:22px!important}
   .mobile-nav .nav-avatar{display:grid!important;place-items:center}
   .mobile-nav button>span{grid-row:2;display:block;align-self:center;line-height:16px!important;font-size:11px!important}
+}
+
+/* Active section: the header and the mobile tab bar both follow the route,
+   using aria-current so the visual state and the accessible state agree. */
+.desktop-nav button[aria-current="page"]{color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}
+.desktop-nav button:not([aria-current]):hover{color:var(--ink)}
+.profile-chip.current{box-shadow:0 0 0 2px var(--paper),0 0 0 3px var(--ink);border-radius:50%}
+@media(max-width:720px){
+  .mobile-nav button[aria-current="page"]{color:#fff!important}
+  .mobile-nav button[aria-current="page"]>span{font-weight:700}
+  .mobile-nav .nav-avatar:not(.avatar-placeholder){color:currentColor!important;border-color:currentColor!important}
+  .mobile-nav button[aria-current="page"] .nav-avatar{box-shadow:0 0 0 2px rgba(36,30,26,.96),0 0 0 3px #fff}
 }

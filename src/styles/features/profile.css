@@ -208,4 +208,10 @@
 }
 /* Broken uploaded media falls back to the same intentional profile treatment. */
 .profile-wallpaper-fallback{background:linear-gradient(135deg,#e7edf3,#f9f7f1 62%,#d9e2e9);opacity:1}
-.profile-custom-avatar.avatar-fallback{display:grid;place-items:center;background:linear-gradient(145deg,#f4e7d3,#bb8e6d);color:#3d2b20;font:700 37px var(--serif);border-color:rgba(255,255,255,.9)}
+.profile-custom-avatar.avatar-fallback{display:grid;place-items:center;background:linear-gradient(145deg,#f4e7d3,#bb8e6d);color:#3d2b20;font:700 37px var(--serif);border-color:rgba(255,255,255,.9);width:82px;height:82px;aspect-ratio:1;flex:0 0 auto;justify-self:start}
+
+/* Phone size for the profile initial (the fallback otherwise fills its row). */
+@media(max-width:720px){.profile-custom-avatar.avatar-fallback{width:66px;height:66px}}
+/* Reading-year header: let the title shrink so the count never sits on top of it. */
+.reading-year-new>header>div{min-width:0;flex:1 1 auto}
+@media(max-width:720px){.reading-year-new>header h2{font-size:clamp(30px,9vw,40px);line-height:1}}
