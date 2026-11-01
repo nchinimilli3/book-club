@@ -2,3 +2,6 @@
 @font-face{font-family:'Instrument Serif';font-style:normal;font-weight:400;font-display:swap;src:url('/fonts/instrument-serif.woff2') format('woff2')}
 @font-face{font-family:'Instrument Serif';font-style:italic;font-weight:400;font-display:swap;src:url('/fonts/instrument-serif-italic.woff2') format('woff2')}
 :root{--display:'Instrument Serif',Georgia,'Times New Roman',serif}
+/* Newsreader (SIL OFL; see public/fonts) replaces Times New Roman as the app's text serif. */
+@font-face{font-family:'Newsreader';font-style:normal;font-weight:200 800;font-display:swap;src:url('/fonts/newsreader.woff2') format('woff2-variations'),url('/fonts/newsreader.woff2') format('woff2')}
+@font-face{font-family:'Newsreader';font-style:italic;font-weight:200 800;font-display:swap;src:url('/fonts/newsreader-italic.woff2') format('woff2-variations'),url('/fonts/newsreader-italic.woff2') format('woff2')}
