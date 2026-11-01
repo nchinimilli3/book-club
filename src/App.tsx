@@ -1,12 +1,11 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { Bell, BookOpen, ChevronDown, Search } from 'lucide-react';
 import { AppProvider, useApp } from './lib/AppContext';
 import { RouterProvider, match, useRouter } from './lib/router';
 import { HomePage } from './pages/HomePage';
 import { markAllNotificationsRead } from '@book-club/data';
 import { BootScreen } from './components/BootScreen';
 import { cloudApi } from './lib/cloudApi';
-import { Avatar } from './components/SafeImage';
+import { AppHeader, TabBar } from './components/AppNav';
 import { WelcomeIntro, shouldPlayIntro } from './components/WelcomeIntro';
 
 const ClubsPage = lazy(() => import('./pages/ClubsPage').then(module => ({ default: module.ClubsPage })));
@@ -49,15 +48,11 @@ function UnknownRoute(){
 }
 
 function Shell(){
-  const a=useApp(),{path,navigate}=useRouter();
-  const[clubMenuOpen,setClubMenuOpen]=useState(false);
-  const[notificationMenuOpen,setNotificationMenuOpen]=useState(false);
-  const[clearingNotifications,setClearingNotifications]=useState(false);
+  const a=useApp(),{path}=useRouter();
   const[introDone,setIntroDone]=useState(false);
   const introUserId=(a.user as {id?:string}|null)?.id;
   const[playIntro,setPlayIntro]=useState(false);
   useEffect(()=>{if(!a.loading&&introUserId)setPlayIntro(shouldPlayIntro(introUserId))},[a.loading,introUserId]);
-  useEffect(()=>{if(!clubMenuOpen&&!notificationMenuOpen)return;const close=(event:PointerEvent)=>{const target=event.target as Element;if(!target.closest('.club-switcher-wrap')&&!target.closest('.notification-menu-wrap')){setClubMenuOpen(false);setNotificationMenuOpen(false)}};document.addEventListener('pointerdown',close);return()=>document.removeEventListener('pointerdown',close)},[clubMenuOpen,notificationMenuOpen]);
   if(a.loading)return <BootScreen message="Opening your clubs…" fullViewport/>;
   if(a.error)return <div className="boot"><b>Something went wrong.</b><span>{a.error}</span><button onClick={a.refresh}>Try again</button></div>;
 
@@ -85,46 +80,17 @@ function Shell(){
   else if(path==='/me')page=<ProfilePage/>;
   else page=<UnknownRoute/>;
 
-  const currentPath=a.activeClubId?`/clubs/${a.activeClubId}`:'/clubs';
   async function clearNotifications(){
     if(!a.user||!a.unreadNotifications)return;
-    setClearingNotifications(true);
-    try{if(import.meta.env.VITE_BACKEND==='d1')await cloudApi.markAllNotificationsRead();else await markAllNotificationsRead(a.user.id);await a.refresh();setNotificationMenuOpen(false)}finally{setClearingNotifications(false)}
+    if(import.meta.env.VITE_BACKEND==='d1')await cloudApi.markAllNotificationsRead();else await markAllNotificationsRead(a.user.id);
+    await a.refresh();
   }
   return <div className="app">
-    <header className="global-header">
-      <button className="brand" onClick={()=>navigate(currentPath)}>BOOK CLUB</button>
-      <div className="club-switcher-wrap">
-        <button className="header-club-switcher" onClick={()=>{setClubMenuOpen(v=>!v);setNotificationMenuOpen(false)}} aria-expanded={clubMenuOpen}>
-          <span>{a.workspace?.club?.name||'Your clubs'}</span><ChevronDown/>
-        </button>
-        {clubMenuOpen&&<div className="club-switcher-menu" role="menu">
-          <div className="club-switcher-label">Your clubs</div>
-          {a.clubs.map(c=><button key={c.id} className={c.id===a.activeClubId?'active':''} onClick={()=>{setClubMenuOpen(false);navigate(`/clubs/${c.id}`)}}><span className={`club-switcher-dot tone-${c.tone}`}/><span>{c.name}</span>{c.id===a.activeClubId&&<small>Current</small>}</button>)}
-          <button className="club-switcher-all" onClick={()=>{setClubMenuOpen(false);navigate('/clubs')}}>Manage clubs</button>
-        </div>}
-      </div>
-      <nav className="desktop-nav" aria-label="Primary">
-        <button className="current-nav" onClick={()=>navigate(currentPath)}><BookOpen/><span>Club</span></button>
-        <button onClick={()=>navigate('/search')}>Find</button>
-      </nav>
-      <div className="global-actions">
-        <div className="notification-menu-wrap">
-          <button className="icon-button notification-button" onClick={()=>{setNotificationMenuOpen(v=>!v);setClubMenuOpen(false)}} aria-expanded={notificationMenuOpen} aria-label={`Notifications${a.unreadNotifications?` · ${a.unreadNotifications} unread`:''}`}><Bell/>{a.unreadNotifications>0&&<span className="notification-badge">{a.unreadNotifications>9?'9+':a.unreadNotifications}</span>}</button>
-          {notificationMenuOpen&&<div className="notification-quick-menu" role="menu"><div><b>{a.unreadNotifications?`${a.unreadNotifications} unread`:'You’re caught up'}</b><span>Notifications</span></div><button type="button" onClick={()=>{setNotificationMenuOpen(false);navigate('/notifications')}}>View notifications</button>{a.unreadNotifications>0&&<button type="button" className="mark-all-quick" disabled={clearingNotifications} onClick={()=>void clearNotifications()}>{clearingNotifications?'Marking…':'Mark all as read'}</button>}</div>}
-        </div>
-        <button className="profile-chip" onClick={()=>navigate('/me')} aria-label="Open my profile"><Avatar src={a.profile?.avatarUrl} name={a.profile?.displayName}/></button>
-      </div>
-    </header>
-    {a.offline&&<div className="offline-banner">Offline · showing your last saved club.</div>}
+    <AppHeader onMarkAllRead={clearNotifications}/>
     <main><Suspense fallback={<BootScreen message="Opening your clubs…"/>}>{page}</Suspense></main>
     <Suspense fallback={null}><QuickPassageCapture/></Suspense>
     {playIntro&&!introDone&&introUserId&&<WelcomeIntro userId={introUserId} name={a.profile?.displayName||''} onDone={()=>setIntroDone(true)}/>}
-    <nav className="mobile-nav" aria-label="Primary">
-      <button onClick={()=>navigate(currentPath)}><BookOpen/><span>Club</span></button>
-      <button onClick={()=>navigate('/search')}><Search/><span>Find</span></button>
-      <button onClick={()=>navigate('/me')}><Avatar className="nav-avatar" src={a.profile?.avatarUrl} name={a.profile?.displayName}/><span>Me</span></button>
-    </nav>
+    <TabBar/>
   </div>;
 }
 

@@ -858,7 +858,6 @@
   .reading-room .checkpoint-prep-panel li p{overflow-wrap:anywhere;line-height:1.4}
   .quick-passage-fab{padding:0;line-height:0;position:fixed;display:block}
   .quick-passage-fab svg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);margin:0}
-  .header-club-switcher{padding-inline:12px}
 }
 @media(max-width:700px){
   .reading-room{padding-left:16px;padding-right:16px;overflow-x:hidden}

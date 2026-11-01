@@ -3,6 +3,7 @@
 @import './foundation/tokens.css';
 @import './foundation/globals.css';
 @import './components/navigation.css';
+@import './components/shell.css';
 @import './components/buttons.css';
 @import './components/forms.css';
 @import './components/modal.css';

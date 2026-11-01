@@ -3,28 +3,12 @@ import { AlertCircle, ChevronRight, Plus, Ticket, X } from 'lucide-react';
 import { useRouter } from '../lib/router';
 import { createClub, joinClub } from '@book-club/data';
 import { useApp } from '../lib/AppContext';
-import type { Phase, Tone } from '../lib/model';
+import type { Tone } from '../lib/model';
+import { clubInitials as initials, phaseLabel } from '../lib/clubDisplay';
 import { cloudApi } from '../lib/cloudApi';
 
 const cloudBackend = import.meta.env.VITE_BACKEND === 'd1';
 const tones: Tone[] = ['rose', 'olive', 'gold', 'plum', 'blue', 'clay'];
-
-const phaseLabel: Record<Phase, string> = {
-  setup: 'Getting started',
-  choosing: 'Choosing the next book',
-  acquiring: 'Getting copies',
-  reading: 'Reading now',
-  planning_meeting: 'Planning the meeting',
-  meeting: 'Meeting soon',
-  rating: 'Rating the book',
-  archived: 'Archived',
-  paused: 'Paused',
-};
-
-function initials(name: string) {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  return ((words[0]?.[0] || '') + (words[1]?.[0] || '')).toUpperCase() || 'BC';
-}
 
 /** Accepts a bare code or a full invite link and returns just the code. */
 function inviteCodeFrom(value: string) {
