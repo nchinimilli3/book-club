@@ -1105,12 +1105,16 @@
 .reading-room .reading-plan-calendar-actions{align-items:center;justify-content:flex-end;flex-wrap:wrap;display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important}
 .reading-room .reading-plan-calendar-actions.calendar-actions-2{grid-template-columns:repeat(2,minmax(0,1fr))!important}
 .reading-room .reading-plan-calendar-actions.calendar-actions-1{grid-template-columns:minmax(0,1fr)!important}
-.reading-room .reading-plan-calendar-actions>:is(button,a){display:grid!important;place-items:center!important;min-height:62px!important;padding:10px!important}
+.reading-room .reading-plan-calendar-actions>:is(button,a){display:grid!important;place-items:center!important;align-content:center!important;gap:6px!important;min-height:72px!important;padding:10px!important}
 .reading-room .reading-plan-calendar-actions .calendar-brand-mark{flex:0 0 auto;display:block!important;width:30px!important;height:30px!important;object-fit:contain!important}
-.reading-room .reading-plan-calendar-actions>:is(button,a)>span{display:none!important}
+.reading-room .reading-plan-calendar-actions>:is(button,a)>span{display:block!important;font:600 12px/1.2 var(--sans)!important;color:inherit;white-space:nowrap}
 .reading-room .reading-plan-calendar-actions .calendar-action-next svg{display:block;width:27px!important;height:27px!important}
 @media(max-width:720px){
   .reading-room .reading-plan-calendar-actions{width:100%!important;gap:8px!important}
   .reading-room .reading-plan-calendar-actions>:is(button,a){min-height:72px!important;height:72px!important}
   .reading-room .reading-plan-calendar-actions .calendar-brand-mark{width:32px!important;height:32px!important}
 }
+
+/* Reading room header: round share button to match the app's icon buttons */
+.reading-room .reading-top .icon-button{display:grid;place-items:center;width:44px;height:44px;padding:0;border:1px solid rgba(22,24,27,.1);border-radius:50%;background:rgba(255,255,255,.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#16181b}
+.reading-room .reading-top .icon-button:hover{background:#fff}

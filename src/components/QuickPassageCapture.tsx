@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Camera, Check, ImagePlus, LoaderCircle, LockKeyhole, MessageCircle, Plus, RotateCcw, X } from 'lucide-react';
+import { useRouter } from '../lib/router';
 import { useApp } from '../lib/AppContext';
 import { createThought, savePrivateNote, saveQuote } from '@book-club/data';
 import { transcribePassage, type PassageTranscription } from '../lib/api';
@@ -35,12 +36,13 @@ function sharedPostType(type:EntryType){
 function withPage(body:string,page?:number){return page?`${body}\n\nPage ${page}`:body}
 
 export function QuickPassageCapture(){
-  const a=useApp(),w=a.workspace,cb=w?.currentBook;
+  const a=useApp(),w=a.workspace,cb=w?.currentBook,{path}=useRouter();
   const cameraRef=useRef<HTMLInputElement>(null),libraryRef=useRef<HTMLInputElement>(null),composerRef=useRef<HTMLTextAreaElement>(null);
   const[open,setOpen]=useState(false),[busy,setBusy]=useState(false),[saving,setSaving]=useState(false);
   const[result,setResult]=useState<PassageTranscription|null>(null),[error,setError]=useState(''),[saved,setSaved]=useState('');
   const[draft,setDraft]=useState(''),[pageNumber,setPageNumber]=useState(''),[entryType,setEntryType]=useState<EntryType>('thought'),[visibility,setVisibility]=useState<Visibility>('private'),[editingPassage,setEditingPassage]=useState(false);
-  if(!a.user||!w||!cb)return null;
+  // Only on club pages: the button adds a thought about the club's current book.
+  if(!a.user||!w||!cb||!path.startsWith('/clubs/'))return null;
   const b=cb.book,currentChapter=w.myProgress?.chapter||undefined,currentPage=w.myProgress?.page||undefined;
   const place=pageNumber.trim()?`Page ${pageNumber.trim()}`:result?.chapterNumber?`Chapter ${result.chapterNumber}`:currentChapter?`Chapter ${currentChapter}`:'';
 
